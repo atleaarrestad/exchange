@@ -8,4 +8,5 @@ public sealed record PendingCryptoTransferOperation(
     string IdempotencyKey,
     string RequestFingerprint,
     decimal TotalDebit,
-    DateTimeOffset CreatedAtUtc);
+    DateTimeOffset CreatedAtUtc,
+    DateTimeOffset LastUpdatedAtUtc);

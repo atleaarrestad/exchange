@@ -16,6 +16,7 @@ public sealed class CryptoTransferTimeoutReconcilerTests
             "idem-1",
             "fingerprint-1",
             1.25m,
+            DateTimeOffset.UtcNow.AddMinutes(-10),
             DateTimeOffset.UtcNow.AddMinutes(-10));
         var idempotencyStore = new TrackingIdempotencyStore(operation);
         var gateway = new TrackingGateway(new BlockchainTransferStatus(
@@ -43,6 +44,7 @@ public sealed class CryptoTransferTimeoutReconcilerTests
             "idem-2",
             "fingerprint-2",
             0.25m,
+            DateTimeOffset.UtcNow.AddMinutes(-10),
             DateTimeOffset.UtcNow.AddMinutes(-10));
         var idempotencyStore = new TrackingIdempotencyStore(operation);
         var gateway = new TrackingGateway(new BlockchainTransferStatus(BlockchainTransferStatusKind.NotSubmitted));
@@ -67,6 +69,7 @@ public sealed class CryptoTransferTimeoutReconcilerTests
             "idem-3",
             "fingerprint-3",
             0.75m,
+            DateTimeOffset.UtcNow.AddMinutes(-10),
             DateTimeOffset.UtcNow.AddMinutes(-10));
         var idempotencyStore = new TrackingIdempotencyStore(operation);
         var gateway = new TrackingGateway(new BlockchainTransferStatus(BlockchainTransferStatusKind.Unknown));
@@ -92,6 +95,7 @@ public sealed class CryptoTransferTimeoutReconcilerTests
             "idem-4",
             "fingerprint-4",
             0.33m,
+            DateTimeOffset.UtcNow.AddMinutes(-10),
             DateTimeOffset.UtcNow.AddMinutes(-10));
         var idempotencyStore = new TrackingIdempotencyStore(operation)
         {

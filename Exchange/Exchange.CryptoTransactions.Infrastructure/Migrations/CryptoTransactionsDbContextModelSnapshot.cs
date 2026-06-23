@@ -36,6 +36,11 @@ public partial class CryptoTransactionsDbContextModelSnapshot : ModelSnapshot
                 .HasColumnType("TEXT")
                 .HasColumnName("created_at_utc");
 
+            entity.Property<DateTimeOffset>("LastUpdatedAtUtc")
+                .IsConcurrencyToken()
+                .HasColumnType("TEXT")
+                .HasColumnName("last_updated_at_utc");
+
             entity.Property<string>("ReceiptJson")
                 .IsRequired()
                 .HasColumnType("TEXT")

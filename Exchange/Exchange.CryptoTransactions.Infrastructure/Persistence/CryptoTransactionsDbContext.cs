@@ -39,6 +39,10 @@ public sealed class CryptoTransactionsDbContext(DbContextOptions<CryptoTransacti
             .HasColumnName("created_at_utc")
             .IsConcurrencyToken();
 
+        receipt.Property(entity => entity.LastUpdatedAtUtc)
+            .HasColumnName("last_updated_at_utc")
+            .IsConcurrencyToken();
+
         receipt.Property(entity => entity.Status)
             .HasColumnName("status")
             .HasConversion<int>()

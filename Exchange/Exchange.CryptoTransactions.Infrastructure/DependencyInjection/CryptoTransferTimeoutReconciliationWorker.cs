@@ -24,6 +24,13 @@ public sealed class CryptoTransferTimeoutReconciliationWorker(
             {
                 break;
             }
+            catch (InvalidOperationException exception)
+            {
+                logger.LogCritical(
+                    exception,
+                    "Crypto transfer timeout reconciliation detected an unrecoverable inconsistency and requires manual investigation.");
+                throw;
+            }
             catch (Exception exception)
             {
                 logger.LogError(exception, "Crypto transfer timeout reconciliation iteration failed.");

@@ -22,6 +22,7 @@ public partial class InitialCryptoTransferIdempotency : Migration
                 total_debit = table.Column<decimal>(type: "TEXT", nullable: false),
                 receipt_json = table.Column<string>(type: "TEXT", nullable: false),
                 created_at_utc = table.Column<DateTimeOffset>(type: "TEXT", nullable: false),
+                last_updated_at_utc = table.Column<DateTimeOffset>(type: "TEXT", nullable: false),
                 status = table.Column<int>(type: "INTEGER", nullable: false)
             },
             constraints: table =>

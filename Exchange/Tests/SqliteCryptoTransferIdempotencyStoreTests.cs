@@ -295,7 +295,8 @@ public sealed class SqliteCryptoTransferIdempotencyStoreTests
         using var command = connection.CreateCommand();
         command.CommandText = """
             UPDATE crypto_transfer_idempotency_receipts
-            SET created_at_utc = $createdAtUtc
+            SET created_at_utc = $createdAtUtc,
+                last_updated_at_utc = $createdAtUtc
             WHERE source_account_id = $sourceAccountId
               AND asset_symbol = $assetSymbol
               AND idempotency_key = $idempotencyKey

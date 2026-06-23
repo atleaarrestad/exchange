@@ -96,7 +96,7 @@ public sealed class SqliteCryptoTransferIdempotencyStore : ICryptoTransferIdempo
                 }
             }
             else if (existingRecord.Status == IdempotencyStatus.Pending &&
-                     DateTimeOffset.UtcNow - existingRecord.CreatedAtUtc.ToUniversalTime() > PendingLeaseDuration)
+                     DateTimeOffset.UtcNow - existingRecord.LastUpdatedAtUtc.ToUniversalTime() > PendingLeaseDuration)
             {
                 throw new IdempotencyOperationPendingException(
                     $"Idempotency key '{existingRecord.IdempotencyKey}' has a pending transfer in an unknown state. " +
@@ -125,7 +125,7 @@ public sealed class SqliteCryptoTransferIdempotencyStore : ICryptoTransferIdempo
         var records = await context.CryptoTransferIdempotencyReceipts
             .AsNoTracking()
             .Where(record => record.Status == IdempotencyStatus.Pending &&
-                             record.CreatedAtUtc <= normalizedOlderThanUtc)
+                             record.LastUpdatedAtUtc <= normalizedOlderThanUtc)
             .ToListAsync(cancellationToken);
 
         return records
@@ -135,7 +135,8 @@ public sealed class SqliteCryptoTransferIdempotencyStore : ICryptoTransferIdempo
                 record.IdempotencyKey,
                 record.RequestFingerprint,
                 record.TotalDebit,
-                record.CreatedAtUtc))
+                record.CreatedAtUtc,
+                record.LastUpdatedAtUtc))
             .ToArray();
     }
 
@@ -264,6 +265,7 @@ public sealed class SqliteCryptoTransferIdempotencyStore : ICryptoTransferIdempo
             TotalDebit = totalDebit,
             ReceiptJson = PendingReceiptMarker,
             CreatedAtUtc = DateTimeOffset.UtcNow,
+            LastUpdatedAtUtc = DateTimeOffset.UtcNow,
             Status = IdempotencyStatus.Pending
         });
 
@@ -291,7 +293,8 @@ public sealed class SqliteCryptoTransferIdempotencyStore : ICryptoTransferIdempo
                 idempotencyKey,
                 RequestFingerprint: string.Empty,
                 TotalDebit: receipt.TotalDebit,
-                CreatedAtUtc: DateTimeOffset.MinValue),
+                CreatedAtUtc: DateTimeOffset.MinValue,
+                LastUpdatedAtUtc: DateTimeOffset.MinValue),
             receipt,
             cancellationToken);
 
@@ -309,7 +312,7 @@ public sealed class SqliteCryptoTransferIdempotencyStore : ICryptoTransferIdempo
                           && record.Status == IdempotencyStatus.Pending)
             .ExecuteUpdateAsync(setters => setters
                 .SetProperty(record => record.ReceiptJson, JsonSerializer.Serialize(receipt, JsonOptions))
-                .SetProperty(record => record.CreatedAtUtc, DateTimeOffset.UtcNow)
+                .SetProperty(record => record.LastUpdatedAtUtc, DateTimeOffset.UtcNow)
                 .SetProperty(record => record.Status, IdempotencyStatus.Completed), cancellationToken);
 
         return affectedRows == 1;
@@ -326,9 +329,9 @@ public sealed class SqliteCryptoTransferIdempotencyStore : ICryptoTransferIdempo
                           && record.IdempotencyKey == operation.IdempotencyKey
                           && record.RequestFingerprint == operation.RequestFingerprint
                           && record.Status == IdempotencyStatus.Pending
-                          && record.CreatedAtUtc == operation.CreatedAtUtc)
+                          && record.LastUpdatedAtUtc == operation.LastUpdatedAtUtc)
             .ExecuteUpdateAsync(setters => setters
-                .SetProperty(record => record.CreatedAtUtc, DateTimeOffset.UtcNow), cancellationToken);
+                .SetProperty(record => record.LastUpdatedAtUtc, DateTimeOffset.UtcNow), cancellationToken);
 
         return affectedRows == 1;
     }
@@ -345,7 +348,8 @@ public sealed class SqliteCryptoTransferIdempotencyStore : ICryptoTransferIdempo
                 idempotencyKey,
                 RequestFingerprint: string.Empty,
                 TotalDebit: 0m,
-                CreatedAtUtc: DateTimeOffset.MinValue),
+                CreatedAtUtc: DateTimeOffset.MinValue,
+                LastUpdatedAtUtc: DateTimeOffset.MinValue),
             cancellationToken);
 
     private async Task<bool> TryReleasePendingRecordAsync(
