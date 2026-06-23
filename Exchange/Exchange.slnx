@@ -1,4 +1,9 @@
 <Solution>
+  <Project Path="Exchange.CryptoTransactions.Application/Exchange.CryptoTransactions.Application.csproj" />
+  <Project Path="Exchange.CryptoTransactions.Domain/Exchange.CryptoTransactions.Domain.csproj" />
+  <Project Path="Exchange.CryptoTransactions.Infrastructure.Simulation/Exchange.CryptoTransactions.Infrastructure.Simulation.csproj" />
+  <Project Path="Exchange.CryptoTransactions.Infrastructure/Exchange.CryptoTransactions.Infrastructure.csproj" />
   <Project Path="Exchange.Infrastructure/Exchange.Infrastructure.csproj" />
   <Project Path="Exchange/Exchange.csproj" />
+  <Project Path="Tests/Tests.csproj" />
 </Solution>

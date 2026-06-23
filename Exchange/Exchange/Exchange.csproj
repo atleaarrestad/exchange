@@ -12,6 +12,8 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\Exchange.CryptoTransactions.Infrastructure.Simulation\Exchange.CryptoTransactions.Infrastructure.Simulation.csproj" />
+    <ProjectReference Include="..\Exchange.CryptoTransactions.Infrastructure\Exchange.CryptoTransactions.Infrastructure.csproj" />
     <ProjectReference Include="..\Exchange.Infrastructure\Exchange.Infrastructure.csproj" />
   </ItemGroup>
 
