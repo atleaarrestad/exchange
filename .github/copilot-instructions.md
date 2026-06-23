@@ -3,6 +3,13 @@
 This repository is a **financial application** that handles **real money and cryptocurrency**.  
 Treat correctness, auditability, and safety as mandatory.
 
+## Business Model Boundary
+
+1. This platform is a **broker model** (similar to Firi), not a matching-engine exchange.
+2. Customers buy/sell against platform-provided quotes and internal inventory.
+3. Do not design or introduce central limit order book, maker/taker matching, or matching-engine workflows unless explicitly requested.
+4. External venue integrations are for hedging/rebalancing liquidity and risk, not customer-to-customer order matching.
+
 ## Architecture and Design Rules
 
 1. **Strict separation of concerns is required**
