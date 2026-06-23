@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.VisualStudio.JavaScript.Sdk">
+  <PropertyGroup>
+    <StartupCommand>npm run start</StartupCommand>
+    <JavaScriptTestRoot>src\</JavaScriptTestRoot>
+    <JavaScriptTestFramework>Karma</JavaScriptTestFramework>
+    <ShouldRunNpmInstall>true</ShouldRunNpmInstall>
+    <BuildOutputFolder>$(MSBuildProjectDirectory)\dist\broker-admin</BuildOutputFolder>
+  </PropertyGroup>
+</Project>

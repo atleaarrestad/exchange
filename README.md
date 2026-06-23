@@ -1,6 +1,19 @@
 # exchange
 Blockchain exchange
 
+## Frontend (Angular)
+
+Frontend apps are included in Visual Studio through `.esproj` entries in `Exchange.slnx`:
+
+- User client: `Frontend/broker-web` (`broker-web.esproj`)
+- Admin client: `Frontend/broker-admin` (`broker-admin.esproj`)
+
+Run from either frontend folder:
+
+- Run locally: `npm run start`
+- Build: `npm run build`
+- Test: `npm run test`
+
 ## Crypto Transactions bounded context
 
 The crypto transfer workflow is isolated into dedicated projects:
