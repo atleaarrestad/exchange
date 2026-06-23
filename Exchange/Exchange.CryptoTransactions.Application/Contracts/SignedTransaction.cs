@@ -1,6 +1,8 @@
+using Exchange.CryptoTransactions.Domain.ValueObjects;
+
 namespace Exchange.CryptoTransactions.Application.Contracts;
 
 public sealed record SignedTransaction(
-    string AssetSymbol,
+    AssetSymbol AssetSymbol,
     string SignedPayload,
     decimal NetworkFee);

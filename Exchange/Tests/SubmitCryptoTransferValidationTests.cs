@@ -1,6 +1,7 @@
 using Exchange.CryptoTransactions.Application;
 using Exchange.CryptoTransactions.Application.Contracts;
 using Exchange.CryptoTransactions.Application.Validation;
+using Exchange.CryptoTransactions.Domain.ValueObjects;
 
 namespace Tests;
 
@@ -84,7 +85,7 @@ public sealed class SubmitCryptoTransferValidationTests
         var service = new CryptoTransferService(gateway, idempotencyStore, validator);
 
         var btcCommand = CreateValidCommand();
-        var ethCommand = btcCommand with { AssetSymbol = CryptoAssetSymbols.Ether };
+        var ethCommand = btcCommand with { AssetSymbol = AssetSymbol.Ether.Value };
 
         await service.SubmitAsync(btcCommand);
         await service.SubmitAsync(ethCommand);
@@ -109,7 +110,7 @@ public sealed class SubmitCryptoTransferValidationTests
             "idem-123",
             "account-123",
             "bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kygt080",
-            CryptoAssetSymbols.Bitcoin,
+            AssetSymbol.Bitcoin.Value,
             0.5m,
             0.001m);
     }
@@ -129,16 +130,16 @@ public sealed class SubmitCryptoTransferValidationTests
 
     private sealed class InMemoryIdempotencyStore : ICryptoTransferIdempotencyStore
     {
-        private readonly Dictionary<(string SourceAccountId, string AssetSymbol, string IdempotencyKey), CryptoTransferReceipt> receipts = new();
+        private readonly Dictionary<(string SourceAccountId, AssetSymbol AssetSymbol, string IdempotencyKey), CryptoTransferReceipt> receipts = new();
 
         public Task<CryptoTransferReceipt> ExecuteOnceAsync(
             string sourceAccountId,
-            string assetSymbol,
+            AssetSymbol assetSymbol,
             string idempotencyKey,
             Func<CancellationToken, Task<CryptoTransferReceipt>> transferFactory,
             CancellationToken cancellationToken = default)
         {
-            var key = (sourceAccountId.Trim(), assetSymbol.Trim().ToUpperInvariant(), idempotencyKey.Trim());
+            var key = (sourceAccountId.Trim(), assetSymbol, idempotencyKey.Trim());
             if (receipts.TryGetValue(key, out var existingReceipt))
             {
                 return Task.FromResult(existingReceipt);
@@ -148,7 +149,7 @@ public sealed class SubmitCryptoTransferValidationTests
         }
 
         private async Task<CryptoTransferReceipt> StoreAndReturnAsync(
-            (string SourceAccountId, string AssetSymbol, string IdempotencyKey) key,
+            (string SourceAccountId, AssetSymbol AssetSymbol, string IdempotencyKey) key,
             Func<CancellationToken, Task<CryptoTransferReceipt>> transferFactory,
             CancellationToken cancellationToken)
         {

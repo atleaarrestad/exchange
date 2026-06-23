@@ -12,7 +12,7 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddControllers();
 builder.Services.AddProblemDetails();
 builder.Services.AddInfrastructureCaching();
-builder.Services.AddCryptoTransactionsInfrastructure();
+builder.Services.AddCryptoTransactionsInfrastructure(builder.Configuration);
 
 var isSimulationEnabled = builder.Configuration.GetSection(ConfigurationKeys.SimulationSection)
     .GetValue<bool>(ConfigurationKeys.Enabled);

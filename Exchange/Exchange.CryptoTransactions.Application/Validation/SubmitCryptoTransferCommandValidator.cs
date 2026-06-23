@@ -63,24 +63,9 @@ public sealed partial class SubmitCryptoTransferCommandValidator : ISubmitCrypto
         {
             AddError(errors, AssetSymbol, "Asset symbol is required.");
         }
-        else
+        else if (!global::Exchange.CryptoTransactions.Domain.ValueObjects.AssetSymbol.TryParse(command.AssetSymbol, out _))
         {
-            var assetSymbol = command.AssetSymbol.Trim().ToUpperInvariant();
-            if (assetSymbol.Length < SubmitCryptoTransferValidationRules.AssetSymbolMinLength ||
-                assetSymbol.Length > SubmitCryptoTransferValidationRules.AssetSymbolMaxLength)
-            {
-                AddError(errors, AssetSymbol, $"Asset symbol must be between {SubmitCryptoTransferValidationRules.AssetSymbolMinLength} and {SubmitCryptoTransferValidationRules.AssetSymbolMaxLength} characters.");
-            }
-
-            if (!AssetSymbolPattern().IsMatch(assetSymbol))
-            {
-                AddError(errors, AssetSymbol, "Asset symbol may contain only uppercase letters.");
-            }
-
-            if (!SubmitCryptoTransferValidationRules.SupportedAssets.Contains(assetSymbol))
-            {
-                AddError(errors, AssetSymbol, $"Asset symbol '{assetSymbol}' is not supported.");
-            }
+            AddError(errors, AssetSymbol, $"Asset symbol '{command.AssetSymbol.Trim()}' is not supported.");
         }
 
         if (command.Amount <= 0m)
@@ -142,7 +127,4 @@ public sealed partial class SubmitCryptoTransferCommandValidator : ISubmitCrypto
 
     [GeneratedRegex("^[A-Za-z0-9_-]+$")]
     private static partial Regex AccountIdPattern();
-
-    [GeneratedRegex("^[A-Z]+$")]
-    private static partial Regex AssetSymbolPattern();
 }

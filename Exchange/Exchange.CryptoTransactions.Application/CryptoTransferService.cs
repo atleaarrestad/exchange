@@ -18,7 +18,7 @@ public sealed class CryptoTransferService(
         commandValidator.Validate(command);
 
         var sourceAccountId = command.SourceAccountId.Trim();
-        var assetSymbol = command.AssetSymbol.Trim().ToUpperInvariant();
+        var assetSymbol = AssetSymbol.Parse(command.AssetSymbol, nameof(command.AssetSymbol));
         var idempotencyKey = command.IdempotencyKey.Trim();
 
         return await idempotencyStore.ExecuteOnceAsync(
@@ -45,7 +45,12 @@ public sealed class CryptoTransferService(
                     transfer.TotalDebit);
 
                 var gatewayResult = await blockchainTransferGateway.SubmitAsync(gatewayRequest, operationCancellationToken);
-                return new CryptoTransferReceipt(transfer.Id, gatewayResult.GatewayTransactionId, gatewayResult.SubmittedAtUtc, transfer.TotalDebit);
+                return new CryptoTransferReceipt(
+                    transfer.Id,
+                    gatewayResult.GatewayTransactionId,
+                    gatewayResult.SubmittedAtUtc,
+                    transfer.TotalDebit,
+                    gatewayResult.RequiredConfirmations);
             },
             cancellationToken);
     }

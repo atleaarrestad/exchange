@@ -22,14 +22,6 @@ public sealed class ApiExceptionMappingMiddleware(
         {
             await WriteValidationProblemAsync(context, StatusCodes.Status400BadRequest, exception.Errors);
         }
-        catch (ArgumentException exception)
-        {
-            await WriteProblemAsync(
-                context,
-                StatusCodes.Status400BadRequest,
-                "Invalid request",
-                exception.Message);
-        }
         catch (BlockchainTransferRejectedException exception)
         {
             await WriteProblemAsync(

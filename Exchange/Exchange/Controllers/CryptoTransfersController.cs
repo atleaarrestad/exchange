@@ -1,6 +1,5 @@
 using Exchange.CryptoTransactions.Application;
 using Microsoft.AspNetCore.Mvc;
-using System.ComponentModel.DataAnnotations;
 
 namespace Exchange.Controllers;
 
@@ -29,21 +28,9 @@ public sealed class CryptoTransfersController(ICryptoTransferService cryptoTrans
 }
 
 public sealed record SubmitCryptoTransferRequest(
-    [property: Required(AllowEmptyStrings = false)]
-    [property: StringLength(128)]
     string IdempotencyKey,
-    [property: Required(AllowEmptyStrings = false)]
-    [property: StringLength(64, MinimumLength = 3)]
-    [property: RegularExpression("^[A-Za-z0-9_-]+$")]
     string SourceAccountId,
-    [property: Required(AllowEmptyStrings = false)]
-    [property: StringLength(128, MinimumLength = 16)]
     string DestinationAddress,
-    [property: Required(AllowEmptyStrings = false)]
-    [property: StringLength(10, MinimumLength = 2)]
-    [property: RegularExpression("^[A-Z]+$")]
     string AssetSymbol,
-    [property: Range(typeof(decimal), "0.000000000000000001", "1000000")]
     decimal Amount,
-    [property: Range(typeof(decimal), "0", "10")]
     decimal NetworkFee);

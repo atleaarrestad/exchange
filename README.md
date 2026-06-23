@@ -12,4 +12,6 @@ The crypto transfer workflow is isolated into dedicated projects:
 
 Simulation mode is enabled through configuration (`Simulation:Enabled`) and swaps the blockchain gateway with the simulation adapter while keeping core transfer logic unchanged.
 
-Validation is layered with API request annotations and application command validation. Domain invariants remain enforced in value objects/aggregates, and API error responses are normalized as `ProblemDetails`.
+Validation is centralized in the application command validator. Domain invariants remain enforced in value objects/aggregates, and API error responses are normalized as `ProblemDetails`.
+
+Idempotency receipts are persisted in SQLite (`CryptoTransactions:Idempotency:SqliteConnectionString`) so repeat requests with the same `(sourceAccountId, assetSymbol, idempotencyKey)` return the original receipt across process restarts and across concurrent API instances.

@@ -4,12 +4,11 @@ public sealed record CryptoAmount
 {
     private const int MaxScale = 18;
 
-    public string AssetSymbol { get; }
+    public AssetSymbol AssetSymbol { get; }
     public decimal Value { get; }
 
-    public CryptoAmount(string assetSymbol, decimal value)
+    public CryptoAmount(AssetSymbol assetSymbol, decimal value)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(assetSymbol);
         ValidateScale(value, nameof(value));
 
         if (value <= 0m)
@@ -17,7 +16,7 @@ public sealed record CryptoAmount
             throw new ArgumentOutOfRangeException(nameof(value), value, "Transfer amount must be greater than zero.");
         }
 
-        AssetSymbol = assetSymbol.Trim().ToUpperInvariant();
+        AssetSymbol = assetSymbol;
         Value = value;
     }
 

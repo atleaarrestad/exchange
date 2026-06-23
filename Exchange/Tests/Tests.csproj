@@ -14,6 +14,7 @@
   <ItemGroup>
     <ProjectReference Include="..\Exchange.CryptoTransactions.Application\Exchange.CryptoTransactions.Application.csproj" />
     <ProjectReference Include="..\Exchange.CryptoTransactions.Domain\Exchange.CryptoTransactions.Domain.csproj" />
+    <ProjectReference Include="..\Exchange.CryptoTransactions.Infrastructure\Exchange.CryptoTransactions.Infrastructure.csproj" />
   </ItemGroup>
 
   <ItemGroup>

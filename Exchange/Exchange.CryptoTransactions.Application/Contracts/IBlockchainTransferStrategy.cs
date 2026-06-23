@@ -1,8 +1,10 @@
+using Exchange.CryptoTransactions.Domain.ValueObjects;
+
 namespace Exchange.CryptoTransactions.Application.Contracts;
 
 public interface IBlockchainTransferStrategy
 {
-    string AssetSymbol { get; }
+    AssetSymbol AssetSymbol { get; }
 
     Task<BlockchainTransferResult> SubmitAsync(BlockchainTransferRequest request, CancellationToken cancellationToken = default);
 }

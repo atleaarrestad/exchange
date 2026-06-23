@@ -4,4 +4,5 @@ public sealed record CryptoTransferReceipt(
     Guid TransferId,
     string GatewayTransactionId,
     DateTimeOffset SubmittedAtUtc,
-    decimal TotalDebit);
+    decimal TotalDebit,
+    int RequiredConfirmations);

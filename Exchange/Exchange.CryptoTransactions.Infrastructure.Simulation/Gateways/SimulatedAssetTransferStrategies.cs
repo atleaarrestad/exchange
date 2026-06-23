@@ -1,5 +1,5 @@
-using Exchange.CryptoTransactions.Application;
 using Exchange.CryptoTransactions.Application.Contracts;
+using DomainAssetSymbol = Exchange.CryptoTransactions.Domain.ValueObjects.AssetSymbol;
 using System.Text.RegularExpressions;
 
 namespace Exchange.CryptoTransactions.Infrastructure.Simulation.Gateways;
@@ -7,54 +7,50 @@ namespace Exchange.CryptoTransactions.Infrastructure.Simulation.Gateways;
 public sealed class SimulatedBitcoinTransferStrategy(
     SimulatedBlockchainTransferGatewayOptions options) : IBlockchainTransferStrategy
 {
-    private readonly IAddressValidator addressValidator = new BitcoinAddressValidator();
-    private readonly IFeeEstimator feeEstimator = new BitcoinFeeEstimator();
-    private readonly ITransactionBuilder transactionBuilder = new BitcoinTransactionBuilder();
-    private readonly ISigner signer = new SimulatedSigner(CryptoAssetSymbols.Bitcoin);
-    private readonly IBroadcaster broadcaster = new SimulatedBroadcaster("btc");
-    private readonly IConfirmationPolicy confirmationPolicy = new FixedConfirmationPolicy(3);
+    private const decimal MinFee = 0.000001m;
+    private const decimal MaxFee = 0.1m;
+    private const int RequiredConfirmations = 3;
+    private const string TransactionPrefix = "btc";
+    private static readonly Regex AddressPattern = new("^(bc1|[13])[A-Za-z0-9]{20,90}$", RegexOptions.Compiled);
 
-    public string AssetSymbol => CryptoAssetSymbols.Bitcoin;
+    public DomainAssetSymbol AssetSymbol => DomainAssetSymbol.Bitcoin;
 
     public async Task<BlockchainTransferResult> SubmitAsync(BlockchainTransferRequest request, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
-        addressValidator.Validate(request.DestinationAddress);
-        var normalizedFee = feeEstimator.NormalizeFee(request);
-        var builtTransaction = transactionBuilder.Build(request, normalizedFee);
-        var signedTransaction = signer.Sign(builtTransaction);
+        SimulatedTransferRules.ValidateAddress(AddressPattern, request.DestinationAddress, "Bitcoin");
+        SimulatedTransferRules.ValidateFee(request.NetworkFee, MinFee, MaxFee, "Bitcoin");
 
         await SimulatedGatewayBehavior.SimulateGatewayDelayAndFailureAsync(options, cancellationToken);
 
-        var result = await broadcaster.BroadcastAsync(signedTransaction, cancellationToken);
-        return result with { RequiredConfirmations = confirmationPolicy.RequiredConfirmations };
+        cancellationToken.ThrowIfCancellationRequested();
+        var transactionId = $"{TransactionPrefix}-{Guid.CreateVersion7():N}";
+        return new BlockchainTransferResult(transactionId, DateTimeOffset.UtcNow, RequiredConfirmations);
     }
 }
 
 public sealed class SimulatedEtherTransferStrategy(
     SimulatedBlockchainTransferGatewayOptions options) : IBlockchainTransferStrategy
 {
-    private readonly IAddressValidator addressValidator = new EtherAddressValidator();
-    private readonly IFeeEstimator feeEstimator = new EtherFeeEstimator();
-    private readonly ITransactionBuilder transactionBuilder = new EtherTransactionBuilder();
-    private readonly ISigner signer = new SimulatedSigner(CryptoAssetSymbols.Ether);
-    private readonly IBroadcaster broadcaster = new SimulatedBroadcaster("eth");
-    private readonly IConfirmationPolicy confirmationPolicy = new FixedConfirmationPolicy(12);
+    private const decimal MinFee = 0.000000001m;
+    private const decimal MaxFee = 1m;
+    private const int RequiredConfirmations = 12;
+    private const string TransactionPrefix = "eth";
+    private static readonly Regex AddressPattern = new("^0x[0-9a-fA-F]{40}$", RegexOptions.Compiled);
 
-    public string AssetSymbol => CryptoAssetSymbols.Ether;
+    public DomainAssetSymbol AssetSymbol => DomainAssetSymbol.Ether;
 
     public async Task<BlockchainTransferResult> SubmitAsync(BlockchainTransferRequest request, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
-        addressValidator.Validate(request.DestinationAddress);
-        var normalizedFee = feeEstimator.NormalizeFee(request);
-        var builtTransaction = transactionBuilder.Build(request, normalizedFee);
-        var signedTransaction = signer.Sign(builtTransaction);
+        SimulatedTransferRules.ValidateAddress(AddressPattern, request.DestinationAddress, "Ether");
+        SimulatedTransferRules.ValidateFee(request.NetworkFee, MinFee, MaxFee, "Ether");
 
         await SimulatedGatewayBehavior.SimulateGatewayDelayAndFailureAsync(options, cancellationToken);
 
-        var result = await broadcaster.BroadcastAsync(signedTransaction, cancellationToken);
-        return result with { RequiredConfirmations = confirmationPolicy.RequiredConfirmations };
+        cancellationToken.ThrowIfCancellationRequested();
+        var transactionId = $"{TransactionPrefix}-{Guid.CreateVersion7():N}";
+        return new BlockchainTransferResult(transactionId, DateTimeOffset.UtcNow, RequiredConfirmations);
     }
 }
 
@@ -78,102 +74,20 @@ file static class SimulatedGatewayBehavior
     }
 }
 
-file sealed class BitcoinAddressValidator : IAddressValidator
+file static class SimulatedTransferRules
 {
-    private static readonly Regex BtcAddressPattern = new("^(bc1|[13])[A-Za-z0-9]{20,90}$", RegexOptions.Compiled);
-
-    public void Validate(string destinationAddress)
+    public static void ValidateAddress(Regex pattern, string destinationAddress, string assetName)
     {
-        if (string.IsNullOrWhiteSpace(destinationAddress) || !BtcAddressPattern.IsMatch(destinationAddress.Trim()))
+        if (string.IsNullOrWhiteSpace(destinationAddress) || !pattern.IsMatch(destinationAddress.Trim()))
         {
-            throw new BlockchainTransferRejectedException("Bitcoin destination address is invalid.");
+            throw new BlockchainTransferRejectedException($"{assetName} destination address is invalid.");
         }
     }
-}
-
-file sealed class EtherAddressValidator : IAddressValidator
-{
-    private static readonly Regex EthAddressPattern = new("^0x[0-9a-fA-F]{40}$", RegexOptions.Compiled);
-
-    public void Validate(string destinationAddress)
+    public static void ValidateFee(decimal networkFee, decimal minFee, decimal maxFee, string assetName)
     {
-        if (string.IsNullOrWhiteSpace(destinationAddress) || !EthAddressPattern.IsMatch(destinationAddress.Trim()))
+        if (networkFee < minFee || networkFee > maxFee)
         {
-            throw new BlockchainTransferRejectedException("Ether destination address is invalid.");
+            throw new BlockchainTransferRejectedException($"{assetName} network fee must be between {minFee} and {maxFee}.");
         }
     }
-}
-
-file sealed class BitcoinFeeEstimator : IFeeEstimator
-{
-    private const decimal MinFee = 0.000001m;
-    private const decimal MaxFee = 0.1m;
-
-    public decimal NormalizeFee(BlockchainTransferRequest request)
-    {
-        if (request.NetworkFee < MinFee || request.NetworkFee > MaxFee)
-        {
-            throw new BlockchainTransferRejectedException($"Bitcoin network fee must be between {MinFee} and {MaxFee}.");
-        }
-
-        return request.NetworkFee;
-    }
-}
-
-file sealed class EtherFeeEstimator : IFeeEstimator
-{
-    private const decimal MinFee = 0.000000001m;
-    private const decimal MaxFee = 1m;
-
-    public decimal NormalizeFee(BlockchainTransferRequest request)
-    {
-        if (request.NetworkFee < MinFee || request.NetworkFee > MaxFee)
-        {
-            throw new BlockchainTransferRejectedException($"Ether network fee must be between {MinFee} and {MaxFee}.");
-        }
-
-        return request.NetworkFee;
-    }
-}
-
-file sealed class BitcoinTransactionBuilder : ITransactionBuilder
-{
-    public BuiltTransaction Build(BlockchainTransferRequest request, decimal networkFee)
-    {
-        var payload = $"type=utxo;inputs=simulated;outputs=2;amount={request.Amount};fee={networkFee}";
-        return new BuiltTransaction(CryptoAssetSymbols.Bitcoin, payload, networkFee);
-    }
-}
-
-file sealed class EtherTransactionBuilder : ITransactionBuilder
-{
-    public BuiltTransaction Build(BlockchainTransferRequest request, decimal networkFee)
-    {
-        var payload = $"type=account;nonce=simulated;gas=21000;value={request.Amount};fee={networkFee}";
-        return new BuiltTransaction(CryptoAssetSymbols.Ether, payload, networkFee);
-    }
-}
-
-file sealed class SimulatedSigner(string assetSymbol) : ISigner
-{
-    public SignedTransaction Sign(BuiltTransaction transaction)
-    {
-        var signedPayload = $"{assetSymbol.ToLowerInvariant()}-signed:{transaction.Payload}";
-        return new SignedTransaction(transaction.AssetSymbol, signedPayload, transaction.NetworkFee);
-    }
-}
-
-file sealed class SimulatedBroadcaster(string txPrefix) : IBroadcaster
-{
-    public Task<BlockchainTransferResult> BroadcastAsync(SignedTransaction transaction, CancellationToken cancellationToken = default)
-    {
-        cancellationToken.ThrowIfCancellationRequested();
-        var transactionId = $"{txPrefix}-{Guid.CreateVersion7():N}";
-        return Task.FromResult(new BlockchainTransferResult(transactionId, DateTimeOffset.UtcNow));
-    }
-}
-
-file sealed class FixedConfirmationPolicy(int requiredConfirmations) : IConfirmationPolicy
-{
-    public int RequiredConfirmations { get; } = requiredConfirmations;
 }
