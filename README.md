@@ -19,3 +19,5 @@ Idempotency receipts are persisted in SQLite (`CryptoTransactions:Idempotency:Sq
 Transfer submission now enforces a funds reservation boundary before the blockchain call. In simulation, an in-memory reservation gateway tracks per-account available balances and rejects transfers that would overdraw.
 
 Outbound blockchain submission is wrapped with a Polly timeout policy to prevent unbounded external call duration while preserving idempotency-first handling of unknown outcomes.
+
+Kraken can be enabled as a real blockchain transfer gateway via `CryptoTransactions:Gateways:Kraken` configuration. When enabled, the infrastructure layer uses Kraken private API signing and withdrawal/status endpoints for BTC/ETH while keeping the same application contracts.
