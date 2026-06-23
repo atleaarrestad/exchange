@@ -19,6 +19,7 @@ public partial class InitialCryptoTransferIdempotency : Migration
                 asset_symbol = table.Column<string>(type: "TEXT", maxLength: 16, nullable: false),
                 idempotency_key = table.Column<string>(type: "TEXT", maxLength: 128, nullable: false),
                 request_fingerprint = table.Column<string>(type: "TEXT", maxLength: 64, nullable: false),
+                total_debit = table.Column<decimal>(type: "TEXT", nullable: false),
                 receipt_json = table.Column<string>(type: "TEXT", nullable: false),
                 created_at_utc = table.Column<DateTimeOffset>(type: "TEXT", nullable: false),
                 status = table.Column<int>(type: "INTEGER", nullable: false)

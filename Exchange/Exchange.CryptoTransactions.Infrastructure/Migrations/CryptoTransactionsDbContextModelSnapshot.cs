@@ -52,6 +52,10 @@ public partial class CryptoTransactionsDbContextModelSnapshot : ModelSnapshot
                 .HasColumnType("INTEGER")
                 .HasColumnName("status");
 
+            entity.Property<decimal>("TotalDebit")
+                .HasColumnType("TEXT")
+                .HasColumnName("total_debit");
+
             entity.HasKey("SourceAccountId", "AssetSymbol", "IdempotencyKey");
 
             entity.ToTable("crypto_transfer_idempotency_receipts");

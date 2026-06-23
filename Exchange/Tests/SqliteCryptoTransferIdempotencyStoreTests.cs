@@ -29,8 +29,8 @@ public sealed class SqliteCryptoTransferIdempotencyStoreTests
                     3));
             }
 
-            var first = await store.ExecuteOnceAsync("account-1", AssetSymbol.Bitcoin, "idem-1", "req-1", Factory);
-            var second = await store.ExecuteOnceAsync("account-1", AssetSymbol.Bitcoin, "idem-1", "req-1", Factory);
+            var first = await store.ExecuteOnceAsync("account-1", AssetSymbol.Bitcoin, "idem-1", "req-1", 1.001m, Factory);
+            var second = await store.ExecuteOnceAsync("account-1", AssetSymbol.Bitcoin, "idem-1", "req-1", 1.001m, Factory);
 
             Assert.AreEqual(1, callCount);
             Assert.AreEqual(first.TransferId, second.TransferId);
@@ -70,9 +70,9 @@ public sealed class SqliteCryptoTransferIdempotencyStoreTests
             }
 
             await Assert.ThrowsExactlyAsync<BlockchainTransferRejectedException>(() =>
-                store.ExecuteOnceAsync("account-1", AssetSymbol.Ether, "idem-2", "req-2", Factory));
+                store.ExecuteOnceAsync("account-1", AssetSymbol.Ether, "idem-2", "req-2", 1.2m, Factory));
 
-            var retry = await store.ExecuteOnceAsync("account-1", AssetSymbol.Ether, "idem-2", "req-2", Factory);
+            var retry = await store.ExecuteOnceAsync("account-1", AssetSymbol.Ether, "idem-2", "req-2", 1.2m, Factory);
 
             Assert.AreEqual(2, callCount);
             Assert.AreEqual("gateway-2", retry.GatewayTransactionId);
@@ -110,12 +110,52 @@ public sealed class SqliteCryptoTransferIdempotencyStoreTests
             }
 
             await Assert.ThrowsExactlyAsync<InsufficientFundsException>(() =>
-                store.ExecuteOnceAsync("account-funds", AssetSymbol.Ether, "idem-funds", "req-funds", Factory));
+                store.ExecuteOnceAsync("account-funds", AssetSymbol.Ether, "idem-funds", "req-funds", 0.8m, Factory));
 
-            var retry = await store.ExecuteOnceAsync("account-funds", AssetSymbol.Ether, "idem-funds", "req-funds", Factory);
+            var retry = await store.ExecuteOnceAsync("account-funds", AssetSymbol.Ether, "idem-funds", "req-funds", 0.8m, Factory);
 
             Assert.AreEqual(2, callCount);
             Assert.AreEqual("gateway-after-funds", retry.GatewayTransactionId);
+        }
+        finally
+        {
+            DeleteFileIfExists(dbPath);
+        }
+    }
+
+    [TestMethod]
+    public async Task ExecuteOnceAsync_WhenFactoryThrowsArgumentException_DoesNotPersistFailedResult()
+    {
+        var store = CreateStore(out var dbPath);
+        try
+        {
+            var callCount = 0;
+
+            async Task<CryptoTransferReceipt> Factory(CancellationToken cancellationToken)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                callCount++;
+                if (callCount == 1)
+                {
+                    throw new ArgumentException("simulated deterministic pre-submission failure");
+                }
+
+                await Task.Yield();
+                return new CryptoTransferReceipt(
+                    Guid.CreateVersion7(),
+                    "gateway-after-argument",
+                    DateTimeOffset.UtcNow,
+                    0.7m,
+                    4);
+            }
+
+            await Assert.ThrowsExactlyAsync<ArgumentException>(() =>
+                store.ExecuteOnceAsync("account-arg", AssetSymbol.Ether, "idem-arg", "req-arg", 0.7m, Factory));
+
+            var retry = await store.ExecuteOnceAsync("account-arg", AssetSymbol.Ether, "idem-arg", "req-arg", 0.7m, Factory);
+
+            Assert.AreEqual(2, callCount);
+            Assert.AreEqual("gateway-after-argument", retry.GatewayTransactionId);
         }
         finally
         {
@@ -146,8 +186,8 @@ public sealed class SqliteCryptoTransferIdempotencyStoreTests
                     2);
             }
 
-            var firstTask = storeA.ExecuteOnceAsync("account-2", AssetSymbol.Bitcoin, "idem-concurrent", "req-concurrent", Factory);
-            var secondTask = storeB.ExecuteOnceAsync("account-2", AssetSymbol.Bitcoin, "idem-concurrent", "req-concurrent", Factory);
+            var firstTask = storeA.ExecuteOnceAsync("account-2", AssetSymbol.Bitcoin, "idem-concurrent", "req-concurrent", 0.25m, Factory);
+            var secondTask = storeB.ExecuteOnceAsync("account-2", AssetSymbol.Bitcoin, "idem-concurrent", "req-concurrent", 0.25m, Factory);
 
             await Task.WhenAll(firstTask, secondTask);
 
@@ -181,10 +221,10 @@ public sealed class SqliteCryptoTransferIdempotencyStoreTests
                     3));
             }
 
-            _ = await store.ExecuteOnceAsync("account-1", AssetSymbol.Bitcoin, "idem-conflict", "req-a", Factory);
+            _ = await store.ExecuteOnceAsync("account-1", AssetSymbol.Bitcoin, "idem-conflict", "req-a", 1.001m, Factory);
 
             await Assert.ThrowsExactlyAsync<IdempotencyKeyConflictException>(() =>
-                store.ExecuteOnceAsync("account-1", AssetSymbol.Bitcoin, "idem-conflict", "req-b", Factory));
+                store.ExecuteOnceAsync("account-1", AssetSymbol.Bitcoin, "idem-conflict", "req-b", 1.001m, Factory));
         }
         finally
         {
@@ -209,7 +249,7 @@ public sealed class SqliteCryptoTransferIdempotencyStoreTests
             }
 
             await Assert.ThrowsExactlyAsync<BlockchainTransferTimeoutException>(() =>
-                store.ExecuteOnceAsync(sourceAccountId, AssetSymbol.Bitcoin, idempotencyKey, requestFingerprint, TimeoutFactory));
+                store.ExecuteOnceAsync(sourceAccountId, AssetSymbol.Bitcoin, idempotencyKey, requestFingerprint, 0.5m, TimeoutFactory));
 
             MakePendingRecordStale(dbPath, sourceAccountId, AssetSymbol.Bitcoin.Value, idempotencyKey);
 
@@ -225,7 +265,7 @@ public sealed class SqliteCryptoTransferIdempotencyStoreTests
             }
 
             await Assert.ThrowsExactlyAsync<IdempotencyOperationPendingException>(() =>
-                store.ExecuteOnceAsync(sourceAccountId, AssetSymbol.Bitcoin, idempotencyKey, requestFingerprint, SuccessFactory));
+                store.ExecuteOnceAsync(sourceAccountId, AssetSymbol.Bitcoin, idempotencyKey, requestFingerprint, 0.5m, SuccessFactory));
         }
         finally
         {

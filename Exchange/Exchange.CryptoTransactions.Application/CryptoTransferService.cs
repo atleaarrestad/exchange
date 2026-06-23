@@ -38,12 +38,14 @@ public sealed class CryptoTransferService(
             assetSymbol,
             command.Amount,
             command.NetworkFee);
+        var totalDebit = checked(command.Amount + command.NetworkFee);
 
         return await idempotencyStore.ExecuteOnceAsync(
             sourceAccountId,
             assetSymbol,
             idempotencyKey,
             requestFingerprint,
+            totalDebit,
             async operationCancellationToken =>
             {
                 var transfer = new CryptoTransfer(
@@ -96,6 +98,15 @@ public sealed class CryptoTransferService(
                         exception);
                 }
                 catch (BlockchainTransferRejectedException)
+                {
+                    await fundsReservationGateway.ReleaseAsync(
+                        transfer.SourceAccountId,
+                        transfer.Amount.AssetSymbol,
+                        transfer.IdempotencyKey,
+                        operationCancellationToken);
+                    throw;
+                }
+                catch (ExternalDependencyNotConfiguredException)
                 {
                     await fundsReservationGateway.ReleaseAsync(
                         transfer.SourceAccountId,

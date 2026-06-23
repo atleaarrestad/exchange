@@ -29,6 +29,9 @@ public sealed class CryptoTransactionsDbContext(DbContextOptions<CryptoTransacti
             .HasColumnName("request_fingerprint")
             .HasMaxLength(64);
 
+        receipt.Property(entity => entity.TotalDebit)
+            .HasColumnName("total_debit");
+
         receipt.Property(entity => entity.ReceiptJson)
             .HasColumnName("receipt_json");
 

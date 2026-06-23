@@ -12,7 +12,16 @@ public sealed class CryptoTransfersController(ICryptoTransferService cryptoTrans
         [FromBody] SubmitCryptoTransferRequest request,
         CancellationToken cancellationToken)
     {
-        ArgumentNullException.ThrowIfNull(request);
+        if (request is null)
+        {
+            return BadRequest(new ProblemDetails
+            {
+                Status = StatusCodes.Status400BadRequest,
+                Title = "Invalid request",
+                Detail = "Request body is required.",
+                Type = "https://httpstatuses.com/400"
+            });
+        }
 
         var command = new SubmitCryptoTransferCommand(
             request.IdempotencyKey,

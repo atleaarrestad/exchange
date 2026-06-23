@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Exchange.CryptoTransactions.Application;
 using Exchange.CryptoTransactions.Application.Contracts;
+using Exchange.CryptoTransactions.Application.Validation;
 using Exchange.CryptoTransactions.Domain.ValueObjects;
 using Exchange.CryptoTransactions.Infrastructure.Persistence;
 using Microsoft.Data.Sqlite;
@@ -35,12 +36,17 @@ public sealed class SqliteCryptoTransferIdempotencyStore : ICryptoTransferIdempo
         AssetSymbol assetSymbol,
         string idempotencyKey,
         string requestFingerprint,
+        decimal totalDebit,
         Func<CancellationToken, Task<CryptoTransferReceipt>> transferFactory,
         CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(sourceAccountId);
         ArgumentException.ThrowIfNullOrWhiteSpace(idempotencyKey);
         ArgumentException.ThrowIfNullOrWhiteSpace(requestFingerprint);
+        if (totalDebit <= 0m)
+        {
+            throw new ArgumentOutOfRangeException(nameof(totalDebit), totalDebit, "Total debit must be greater than zero.");
+        }
         ArgumentNullException.ThrowIfNull(transferFactory);
 
         await EnsureInitializedAsync(cancellationToken);
@@ -77,6 +83,7 @@ public sealed class SqliteCryptoTransferIdempotencyStore : ICryptoTransferIdempo
                         assetSymbol,
                         normalizedIdempotencyKey,
                         normalizedRequestFingerprint,
+                        totalDebit,
                         cancellationToken))
                 {
                     return await ExecuteOwnedPendingAsync(
@@ -107,6 +114,60 @@ public sealed class SqliteCryptoTransferIdempotencyStore : ICryptoTransferIdempo
         }
     }
 
+    public async Task<IReadOnlyList<PendingCryptoTransferOperation>> GetPendingOlderThanAsync(
+        DateTimeOffset olderThanUtc,
+        CancellationToken cancellationToken = default)
+    {
+        await EnsureInitializedAsync(cancellationToken);
+        var normalizedOlderThanUtc = olderThanUtc.ToUniversalTime();
+
+        await using var context = await dbContextFactory.CreateDbContextAsync(cancellationToken);
+        var records = await context.CryptoTransferIdempotencyReceipts
+            .AsNoTracking()
+            .Where(record => record.Status == IdempotencyStatus.Pending &&
+                             record.CreatedAtUtc <= normalizedOlderThanUtc)
+            .ToListAsync(cancellationToken);
+
+        return records
+            .Select(record => new PendingCryptoTransferOperation(
+                record.SourceAccountId,
+                AssetSymbol.Parse(record.AssetSymbol),
+                record.IdempotencyKey,
+                record.RequestFingerprint,
+                record.TotalDebit,
+                record.CreatedAtUtc))
+            .ToArray();
+    }
+
+    public async Task<bool> TryMarkCompletedAsync(
+        PendingCryptoTransferOperation operation,
+        CryptoTransferReceipt receipt,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(operation);
+        ArgumentNullException.ThrowIfNull(receipt);
+        await EnsureInitializedAsync(cancellationToken);
+        return await TryMarkCompletedPendingRecordAsync(operation, receipt, cancellationToken);
+    }
+
+    public async Task<bool> TryAcquirePendingAsync(
+        PendingCryptoTransferOperation operation,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(operation);
+        await EnsureInitializedAsync(cancellationToken);
+        return await TryAcquirePendingRecordAsync(operation, cancellationToken);
+    }
+
+    public async Task<bool> TryReleasePendingAsync(
+        PendingCryptoTransferOperation operation,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(operation);
+        await EnsureInitializedAsync(cancellationToken);
+        return await TryReleasePendingRecordAsync(operation, cancellationToken);
+    }
+
     private async Task<CryptoTransferReceipt> ExecuteOwnedPendingAsync(
         string sourceAccountId,
         AssetSymbol assetSymbol,
@@ -120,7 +181,7 @@ public sealed class SqliteCryptoTransferIdempotencyStore : ICryptoTransferIdempo
         try
         {
             var createdReceipt = await transferFactory(cancellationToken);
-            var completed = await TryMarkCompletedAsync(
+            var completed = await TryMarkCompletedPendingRecordAsync(
                 sourceAccountId,
                 assetSymbol,
                 idempotencyKey,
@@ -135,6 +196,8 @@ public sealed class SqliteCryptoTransferIdempotencyStore : ICryptoTransferIdempo
         catch (Exception exception) when (
             exception is BlockchainTransferRejectedException
             or InsufficientFundsException
+            or ApplicationValidationException
+            or ArgumentException
             or ExternalDependencyNotConfiguredException)
         {
             await TryReleasePendingRecordAsync(sourceAccountId, assetSymbol, idempotencyKey, cancellationToken);
@@ -188,6 +251,7 @@ public sealed class SqliteCryptoTransferIdempotencyStore : ICryptoTransferIdempo
         AssetSymbol assetSymbol,
         string idempotencyKey,
         string requestFingerprint,
+        decimal totalDebit,
         CancellationToken cancellationToken)
     {
         await using var context = await dbContextFactory.CreateDbContextAsync(cancellationToken);
@@ -197,6 +261,7 @@ public sealed class SqliteCryptoTransferIdempotencyStore : ICryptoTransferIdempo
             AssetSymbol = assetSymbol.Value,
             IdempotencyKey = idempotencyKey,
             RequestFingerprint = requestFingerprint,
+            TotalDebit = totalDebit,
             ReceiptJson = PendingReceiptMarker,
             CreatedAtUtc = DateTimeOffset.UtcNow,
             Status = IdempotencyStatus.Pending
@@ -213,18 +278,34 @@ public sealed class SqliteCryptoTransferIdempotencyStore : ICryptoTransferIdempo
         }
     }
 
-    private async Task<bool> TryMarkCompletedAsync(
+    private Task<bool> TryMarkCompletedPendingRecordAsync(
         string sourceAccountId,
         AssetSymbol assetSymbol,
         string idempotencyKey,
+        CryptoTransferReceipt receipt,
+        CancellationToken cancellationToken) =>
+        TryMarkCompletedPendingRecordAsync(
+            new PendingCryptoTransferOperation(
+                sourceAccountId,
+                assetSymbol,
+                idempotencyKey,
+                RequestFingerprint: string.Empty,
+                TotalDebit: receipt.TotalDebit,
+                CreatedAtUtc: DateTimeOffset.MinValue),
+            receipt,
+            cancellationToken);
+
+    private async Task<bool> TryMarkCompletedPendingRecordAsync(
+        PendingCryptoTransferOperation operation,
         CryptoTransferReceipt receipt,
         CancellationToken cancellationToken)
     {
         await using var context = await dbContextFactory.CreateDbContextAsync(cancellationToken);
         var affectedRows = await context.CryptoTransferIdempotencyReceipts
-            .Where(record => record.SourceAccountId == sourceAccountId
-                          && record.AssetSymbol == assetSymbol.Value
-                          && record.IdempotencyKey == idempotencyKey
+            .Where(record => record.SourceAccountId == operation.SourceAccountId
+                          && record.AssetSymbol == operation.AssetSymbol.Value
+                          && record.IdempotencyKey == operation.IdempotencyKey
+                          && (string.IsNullOrEmpty(operation.RequestFingerprint) || record.RequestFingerprint == operation.RequestFingerprint)
                           && record.Status == IdempotencyStatus.Pending)
             .ExecuteUpdateAsync(setters => setters
                 .SetProperty(record => record.ReceiptJson, JsonSerializer.Serialize(receipt, JsonOptions))
@@ -234,19 +315,53 @@ public sealed class SqliteCryptoTransferIdempotencyStore : ICryptoTransferIdempo
         return affectedRows == 1;
     }
 
-    private async Task TryReleasePendingRecordAsync(
-        string sourceAccountId,
-        AssetSymbol assetSymbol,
-        string idempotencyKey,
+    private async Task<bool> TryAcquirePendingRecordAsync(
+        PendingCryptoTransferOperation operation,
         CancellationToken cancellationToken)
     {
         await using var context = await dbContextFactory.CreateDbContextAsync(cancellationToken);
-        await context.CryptoTransferIdempotencyReceipts
-            .Where(record => record.SourceAccountId == sourceAccountId
-                          && record.AssetSymbol == assetSymbol.Value
-                          && record.IdempotencyKey == idempotencyKey
+        var affectedRows = await context.CryptoTransferIdempotencyReceipts
+            .Where(record => record.SourceAccountId == operation.SourceAccountId
+                          && record.AssetSymbol == operation.AssetSymbol.Value
+                          && record.IdempotencyKey == operation.IdempotencyKey
+                          && record.RequestFingerprint == operation.RequestFingerprint
+                          && record.Status == IdempotencyStatus.Pending
+                          && record.CreatedAtUtc == operation.CreatedAtUtc)
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(record => record.CreatedAtUtc, DateTimeOffset.UtcNow), cancellationToken);
+
+        return affectedRows == 1;
+    }
+
+    private Task<bool> TryReleasePendingRecordAsync(
+        string sourceAccountId,
+        AssetSymbol assetSymbol,
+        string idempotencyKey,
+        CancellationToken cancellationToken) =>
+        TryReleasePendingRecordAsync(
+            new PendingCryptoTransferOperation(
+                sourceAccountId,
+                assetSymbol,
+                idempotencyKey,
+                RequestFingerprint: string.Empty,
+                TotalDebit: 0m,
+                CreatedAtUtc: DateTimeOffset.MinValue),
+            cancellationToken);
+
+    private async Task<bool> TryReleasePendingRecordAsync(
+        PendingCryptoTransferOperation operation,
+        CancellationToken cancellationToken)
+    {
+        await using var context = await dbContextFactory.CreateDbContextAsync(cancellationToken);
+        var affectedRows = await context.CryptoTransferIdempotencyReceipts
+            .Where(record => record.SourceAccountId == operation.SourceAccountId
+                          && record.AssetSymbol == operation.AssetSymbol.Value
+                          && record.IdempotencyKey == operation.IdempotencyKey
+                          && (string.IsNullOrEmpty(operation.RequestFingerprint) || record.RequestFingerprint == operation.RequestFingerprint)
                           && record.Status == IdempotencyStatus.Pending)
             .ExecuteDeleteAsync(cancellationToken);
+
+        return affectedRows == 1;
     }
 
     private static CryptoTransferReceipt DeserializeReceipt(string serializedReceipt)

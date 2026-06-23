@@ -143,6 +143,24 @@ public sealed class SubmitCryptoTransferValidationTests
         Assert.IsFalse(gateway.WasCalled);
     }
 
+    [TestMethod]
+    public async Task Service_WithUnconfiguredGateway_ReleasesReservationAndThrows()
+    {
+        var gateway = new TrackingGateway
+        {
+            ThrowDependencyNotConfigured = true
+        };
+        var fundsReservationGateway = new TrackingFundsReservationGateway();
+        var validator = new SubmitCryptoTransferCommandValidator();
+        var idempotencyStore = new InMemoryIdempotencyStore();
+        var service = new CryptoTransferService(gateway, fundsReservationGateway, idempotencyStore, validator);
+
+        await Assert.ThrowsExactlyAsync<ExternalDependencyNotConfiguredException>(() => service.SubmitAsync(CreateValidCommand()));
+
+        Assert.AreEqual(1, fundsReservationGateway.ReserveCallCount);
+        Assert.AreEqual(1, fundsReservationGateway.ReleaseCallCount);
+    }
+
     private static SubmitCryptoTransferCommand CreateValidCommand()
     {
         return new SubmitCryptoTransferCommand(
@@ -156,6 +174,7 @@ public sealed class SubmitCryptoTransferValidationTests
 
     private sealed class TrackingGateway : IBlockchainTransferGateway
     {
+        public bool ThrowDependencyNotConfigured { get; init; }
         public bool WasCalled { get; private set; }
         public int CallCount { get; private set; }
 
@@ -163,7 +182,22 @@ public sealed class SubmitCryptoTransferValidationTests
         {
             WasCalled = true;
             CallCount++;
+            if (ThrowDependencyNotConfigured)
+            {
+                throw new ExternalDependencyNotConfiguredException("simulated missing gateway");
+            }
+
             return Task.FromResult(new BlockchainTransferResult("gateway-1", DateTimeOffset.UtcNow));
+        }
+
+        public Task<BlockchainTransferStatus> GetTransferStatusAsync(
+            string sourceAccountId,
+            AssetSymbol assetSymbol,
+            string idempotencyKey,
+            CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return Task.FromResult(new BlockchainTransferStatus(BlockchainTransferStatusKind.Unknown));
         }
     }
 
@@ -176,6 +210,7 @@ public sealed class SubmitCryptoTransferValidationTests
             AssetSymbol assetSymbol,
             string idempotencyKey,
             string requestFingerprint,
+            decimal totalDebit,
             Func<CancellationToken, Task<CryptoTransferReceipt>> transferFactory,
             CancellationToken cancellationToken = default)
         {
@@ -199,6 +234,39 @@ public sealed class SubmitCryptoTransferValidationTests
             return StoreAndReturnAsync(key, normalizedRequestFingerprint, transferFactory, cancellationToken);
         }
 
+        public Task<IReadOnlyList<PendingCryptoTransferOperation>> GetPendingOlderThanAsync(
+            DateTimeOffset olderThanUtc,
+            CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return Task.FromResult<IReadOnlyList<PendingCryptoTransferOperation>>(Array.Empty<PendingCryptoTransferOperation>());
+        }
+
+        public Task<bool> TryMarkCompletedAsync(
+            PendingCryptoTransferOperation operation,
+            CryptoTransferReceipt receipt,
+            CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return Task.FromResult(false);
+        }
+
+        public Task<bool> TryAcquirePendingAsync(
+            PendingCryptoTransferOperation operation,
+            CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return Task.FromResult(false);
+        }
+
+        public Task<bool> TryReleasePendingAsync(
+            PendingCryptoTransferOperation operation,
+            CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return Task.FromResult(false);
+        }
+
         private async Task<CryptoTransferReceipt> StoreAndReturnAsync(
             (string SourceAccountId, AssetSymbol AssetSymbol, string IdempotencyKey) key,
             string requestFingerprint,
@@ -216,6 +284,7 @@ public sealed class SubmitCryptoTransferValidationTests
     {
         public bool ThrowInsufficientFunds { get; init; }
         public int ReserveCallCount { get; private set; }
+        public int ReleaseCallCount { get; private set; }
 
         public Task ReserveAsync(
             string sourceAccountId,
@@ -251,6 +320,7 @@ public sealed class SubmitCryptoTransferValidationTests
             CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            ReleaseCallCount++;
             return Task.CompletedTask;
         }
     }

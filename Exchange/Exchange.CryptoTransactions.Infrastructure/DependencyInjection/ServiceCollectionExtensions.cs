@@ -17,14 +17,18 @@ public static class ServiceCollectionExtensions
 
         var connectionString = configuration.GetValue<string>(InfrastructureConfigurationKeys.IdempotencySqliteConnectionString)
             ?? InfrastructureConfigurationKeys.DefaultIdempotencySqliteConnectionString;
+        var timeoutReconciliationOptions = TimeoutReconciliationOptions.FromConfiguration(configuration);
 
         services.AddDbContextFactory<CryptoTransactionsDbContext>(options => options.UseSqlite(connectionString));
+        services.AddSingleton(timeoutReconciliationOptions);
         services.AddSingleton<ISubmitCryptoTransferCommandValidator, SubmitCryptoTransferCommandValidator>();
         services.AddSingleton<ICryptoTransferIdempotencyStore>(serviceProvider =>
             new SqliteCryptoTransferIdempotencyStore(serviceProvider.GetRequiredService<IDbContextFactory<CryptoTransactionsDbContext>>()));
         services.AddSingleton<ICryptoTransferService, CryptoTransferService>();
+        services.AddSingleton<ICryptoTransferTimeoutReconciler, CryptoTransferTimeoutReconciler>();
         services.AddSingleton<ICryptoTransferFundsReservationGateway, UnconfiguredCryptoTransferFundsReservationGateway>();
         services.AddSingleton<IBlockchainTransferGateway, UnconfiguredBlockchainTransferGateway>();
+        services.AddHostedService<CryptoTransferTimeoutReconciliationWorker>();
         return services;
     }
 }
