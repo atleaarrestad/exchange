@@ -7,6 +7,7 @@ Frontend apps are included in Visual Studio through `.esproj` entries in `Exchan
 
 - User client: `Frontend/broker-web` (`broker-web.esproj`)
 - Admin client: `Frontend/broker-admin` (`broker-admin.esproj`)
+- Shared libs root: `Frontend/libs`
 
 Run from either frontend folder:
 

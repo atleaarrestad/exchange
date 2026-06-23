@@ -121,6 +121,18 @@ Treat correctness, auditability, and safety as mandatory.
 7. Invalidation operations must be idempotent and retry-safe.
 8. Do not use cache as source of truth for critical mutable financial state (balances/ledger correctness remains authoritative in persistence/domain logic).
 
+## Frontend Client Boundary and Shared Libraries
+
+1. Keep user and administration frontends as **separate deployable Angular clients**.
+2. Include each frontend in Visual Studio via separate `.esproj` entries, while keeping Node tooling as the source of truth for frontend build/test commands.
+3. Share only stable cross-client logic in workspace-level libraries (for example `libs/api-client`, `libs/contracts`, `libs/auth-core`, `libs/finance-core`, `libs/app-errors`).
+4. Favor sharing **headless logic** over UI. Keep most screens/features/components app-specific unless they are truly generic.
+5. Enforce one-way boundaries:
+   - shared libraries must not import from app projects
+   - expose library public APIs through `index.ts` (no deep imports)
+   - use typed aliases and lint boundary rules to prevent coupling
+6. Keep financial rules and amount handling in shared typed libraries so both clients apply the same validated behavior.
+
 ## Financial Safety Requirements
 
 1. Never use floating-point types (`float`, `double`) for money/amount calculations; use `decimal`.
