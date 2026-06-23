@@ -1,3 +1,4 @@
 <Solution>
+  <Project Path="Exchange.Infrastructure/Exchange.Infrastructure.csproj" />
   <Project Path="Exchange/Exchange.csproj" />
 </Solution>

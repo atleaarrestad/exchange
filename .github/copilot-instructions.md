@@ -91,6 +91,19 @@ Treat correctness, auditability, and safety as mandatory.
    - behavior may differ from real broker failure modes
 5. Keep transport configuration environment-driven so production can switch to a real broker (for example RabbitMQ or Azure Service Bus) without rewriting domain/application logic.
 
+## Caching Strategy and Invalidation
+
+1. Keep caching behind infrastructure abstractions (no direct cache vendor usage from domain/application logic).
+2. Current default is **L1 in-process memory cache**; design must allow adding **L2 Valkey distributed cache** later.
+3. Use strongly typed constants/builders for cache scopes and keys; avoid magic strings.
+4. Use cache-aside patterns with bounded TTLs (and optional jitter to avoid thundering herd behavior).
+5. Prefer **versioned cache keys** for entity/aggregate reads.
+6. Invalidate primarily through domain/integration events:
+   - publish change events at write boundaries
+   - invalidate in handlers (in-process now, message-bus-driven later)
+7. Invalidation operations must be idempotent and retry-safe.
+8. Do not use cache as source of truth for critical mutable financial state (balances/ledger correctness remains authoritative in persistence/domain logic).
+
 ## Financial Safety Requirements
 
 1. Never use floating-point types (`float`, `double`) for money/amount calculations; use `decimal`.

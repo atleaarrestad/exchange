@@ -1,10 +1,12 @@
 using MassTransit;
+using Exchange.Infrastructure.Caching;
 
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
 
 builder.Services.AddControllers();
+builder.Services.AddInfrastructureCaching();
 builder.Services.AddMassTransit(configurator =>
 {
     configurator.SetKebabCaseEndpointNameFormatter();
