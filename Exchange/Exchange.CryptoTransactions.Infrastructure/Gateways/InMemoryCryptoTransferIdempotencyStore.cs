@@ -11,15 +11,17 @@ public sealed class InMemoryCryptoTransferIdempotencyStore : ICryptoTransferIdem
 
     public async Task<CryptoTransferReceipt> ExecuteOnceAsync(
         string sourceAccountId,
+        string assetSymbol,
         string idempotencyKey,
         Func<CancellationToken, Task<CryptoTransferReceipt>> transferFactory,
         CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(sourceAccountId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(assetSymbol);
         ArgumentException.ThrowIfNullOrWhiteSpace(idempotencyKey);
         ArgumentNullException.ThrowIfNull(transferFactory);
 
-        var key = new CryptoTransferIdempotencyKey(sourceAccountId.Trim(), idempotencyKey.Trim());
+        var key = new CryptoTransferIdempotencyKey(sourceAccountId.Trim(), assetSymbol.Trim().ToUpperInvariant(), idempotencyKey.Trim());
         var lazyOperation = operations.GetOrAdd(
             key,
             static (_, callback) => new Lazy<Task<CryptoTransferReceipt>>(
@@ -38,5 +40,5 @@ public sealed class InMemoryCryptoTransferIdempotencyStore : ICryptoTransferIdem
         }
     }
 
-    private readonly record struct CryptoTransferIdempotencyKey(string SourceAccountId, string IdempotencyKey);
+    private readonly record struct CryptoTransferIdempotencyKey(string SourceAccountId, string AssetSymbol, string IdempotencyKey);
 }

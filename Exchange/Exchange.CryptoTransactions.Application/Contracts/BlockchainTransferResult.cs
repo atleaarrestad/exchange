@@ -2,4 +2,5 @@ namespace Exchange.CryptoTransactions.Application.Contracts;
 
 public sealed record BlockchainTransferResult(
     string GatewayTransactionId,
-    DateTimeOffset SubmittedAtUtc);
+    DateTimeOffset SubmittedAtUtc,
+    int RequiredConfirmations = 0);

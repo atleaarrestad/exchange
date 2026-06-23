@@ -16,5 +16,5 @@ public static class SubmitCryptoTransferValidationRules
     public const int MaxScale = 18;
 
     public static FrozenSet<string> SupportedAssets { get; } =
-        new[] { "BTC", "ETH", "USDT" }.ToFrozenSet(StringComparer.Ordinal);
+        new[] { CryptoAssetSymbols.Bitcoin, CryptoAssetSymbols.Ether }.ToFrozenSet(StringComparer.Ordinal);
 }

@@ -1,34 +1,27 @@
 using Exchange.CryptoTransactions.Application.Contracts;
+using System.Collections.Frozen;
 
 namespace Exchange.CryptoTransactions.Infrastructure.Simulation.Gateways;
 
 public sealed class SimulatedBlockchainTransferGateway(
-    SimulatedBlockchainTransferGatewayOptions options) : IBlockchainTransferGateway
+    IEnumerable<IBlockchainTransferStrategy> strategies) : IBlockchainTransferGateway
 {
-    public async Task<BlockchainTransferResult> SubmitAsync(BlockchainTransferRequest request, CancellationToken cancellationToken = default)
+    private readonly FrozenDictionary<string, IBlockchainTransferStrategy> strategiesByAsset =
+        strategies.ToFrozenDictionary(
+            static strategy => strategy.AssetSymbol.Trim().ToUpperInvariant(),
+            static strategy => strategy,
+            StringComparer.Ordinal);
+
+    public Task<BlockchainTransferResult> SubmitAsync(BlockchainTransferRequest request, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
+        var assetSymbol = request.AssetSymbol.Trim().ToUpperInvariant();
 
-        var delayMs = Random.Shared.Next(options.MinLatencyMs, options.MaxLatencyMs + 1);
-        await Task.Delay(TimeSpan.FromMilliseconds(delayMs), cancellationToken);
-
-        var randomValue = NextRandomDecimal();
-        if (randomValue < options.TimeoutRate)
+        if (!strategiesByAsset.TryGetValue(assetSymbol, out var strategy))
         {
-            throw new BlockchainTransferTimeoutException("Simulated blockchain gateway timeout.");
+            throw new BlockchainTransferRejectedException($"No simulation transfer strategy is registered for asset '{assetSymbol}'.");
         }
 
-        if (randomValue < options.TimeoutRate + options.RejectRate)
-        {
-            throw new BlockchainTransferRejectedException("Simulated blockchain gateway rejected the transfer.");
-        }
-
-        var transactionId = $"sim-{Guid.CreateVersion7():N}";
-        return new BlockchainTransferResult(transactionId, DateTimeOffset.UtcNow);
-    }
-
-    private static decimal NextRandomDecimal()
-    {
-        return Random.Shared.Next(0, 10_000) / 10_000m;
+        return strategy.SubmitAsync(request, cancellationToken);
     }
 }

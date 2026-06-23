@@ -18,10 +18,12 @@ public sealed class CryptoTransferService(
         commandValidator.Validate(command);
 
         var sourceAccountId = command.SourceAccountId.Trim();
+        var assetSymbol = command.AssetSymbol.Trim().ToUpperInvariant();
         var idempotencyKey = command.IdempotencyKey.Trim();
 
         return await idempotencyStore.ExecuteOnceAsync(
             sourceAccountId,
+            assetSymbol,
             idempotencyKey,
             async operationCancellationToken =>
             {
@@ -29,7 +31,7 @@ public sealed class CryptoTransferService(
                     idempotencyKey,
                     sourceAccountId,
                     command.DestinationAddress,
-                    new CryptoAmount(command.AssetSymbol, command.Amount),
+                    new CryptoAmount(assetSymbol, command.Amount),
                     new NetworkFee(command.NetworkFee),
                     DateTimeOffset.UtcNow);
 

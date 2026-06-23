@@ -15,6 +15,8 @@ public static class ServiceCollectionExtensions
             configuration.GetSection(SimulationConfigurationKeys.CryptoTransactionsSimulationSection));
 
         services.AddSingleton(options);
+        services.AddSingleton<IBlockchainTransferStrategy, SimulatedBitcoinTransferStrategy>();
+        services.AddSingleton<IBlockchainTransferStrategy, SimulatedEtherTransferStrategy>();
         services.AddSingleton<IBlockchainTransferGateway, SimulatedBlockchainTransferGateway>();
         return services;
     }
