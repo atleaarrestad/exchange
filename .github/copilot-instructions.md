@@ -29,6 +29,40 @@ Treat correctness, auditability, and safety as mandatory.
 4. Write EF Core configurations with provider portability in mind:
    - Avoid provider-specific SQL unless absolutely necessary.
    - Keep migrations and type mappings compatible with future PostgreSQL move.
+5. Simulation/staging environments should run with a real database and real migrations.
+
+## Simulation and Load Testing Mode
+
+1. The system must support a **Simulation mode** via dependency injection.
+2. In Simulation mode, keep the internal core real:
+   - domain logic
+   - risk/rebalancing logic
+   - ledger/accounting flows
+   - queues/retry behavior
+   - persistence
+3. Only replace external edges with simulation adapters:
+   - exchange clients
+   - bank/payment clients
+   - wallet/blockchain clients
+   - market data feeds (replay/synthetic)
+4. Simulation adapters must support high-traffic and failure scenarios:
+   - bursts and sustained load
+   - latency spikes/timeouts
+   - partial fills/slippage
+   - rejected/cancelled orders
+   - liquidity drops
+5. Core financial invariants must be continuously verifiable during simulation:
+   - no negative balances
+   - no double-spend
+   - reserve thresholds respected
+   - ledger reconciliation is consistent
+
+## Simulation Project Structure
+
+1. Prefer a **dedicated simulation project per bounded context** (for example, `*.Infrastructure.Simulation`).
+2. Real and simulation implementations must share the same application-facing interfaces/contracts.
+3. Keep simulation logic out of domain and application core.
+4. For very small integrations, colocating real + simulation implementations in the same infrastructure project is acceptable temporarily, but default to dedicated simulation projects as the codebase grows.
 
 ## Financial Safety Requirements
 
@@ -47,4 +81,3 @@ Treat correctness, auditability, and safety as mandatory.
    - transfer settlement
    - rounding behavior
 3. Keep changes small, reviewable, and aligned to the domain model.
-
