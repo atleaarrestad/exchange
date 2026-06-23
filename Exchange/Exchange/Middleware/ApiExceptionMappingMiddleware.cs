@@ -46,6 +46,30 @@ public sealed class ApiExceptionMappingMiddleware(
                 "Idempotency conflict",
                 exception.Message);
         }
+        catch (IdempotencyOperationPendingException exception)
+        {
+            await WriteProblemAsync(
+                context,
+                StatusCodes.Status409Conflict,
+                "Idempotency operation pending",
+                exception.Message);
+        }
+        catch (InsufficientFundsException exception)
+        {
+            await WriteProblemAsync(
+                context,
+                StatusCodes.Status422UnprocessableEntity,
+                "Insufficient funds",
+                exception.Message);
+        }
+        catch (ExternalDependencyNotConfiguredException exception)
+        {
+            await WriteProblemAsync(
+                context,
+                StatusCodes.Status503ServiceUnavailable,
+                "Dependency not configured",
+                exception.Message);
+        }
         catch (Exception exception)
         {
             logger.LogError(exception, "Unhandled exception for request {Path}", context.Request.Path);

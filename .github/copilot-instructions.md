@@ -91,6 +91,16 @@ Treat correctness, auditability, and safety as mandatory.
    - behavior may differ from real broker failure modes
 5. Keep transport configuration environment-driven so production can switch to a real broker (for example RabbitMQ or Azure Service Bus) without rewriting domain/application logic.
 
+## Resilience Policy Guidance (Polly)
+
+1. MassTransit and Polly serve different concerns and can be used together.
+2. Use MassTransit middleware/retry/redelivery for message consumer flows.
+3. Use Polly for outbound dependency calls outside MassTransit consumer pipelines (for example exchange APIs, blockchain RPC, bank/payment endpoints).
+4. Prefer fail-safe financial defaults:
+   - timeouts and circuit breaking are encouraged
+   - retries are only allowed when the remote operation is idempotent and duplicate-safe
+5. Keep Polly policies behind infrastructure/application boundaries; domain models must stay policy-agnostic.
+
 ## Caching Strategy and Invalidation
 
 1. Keep caching behind infrastructure abstractions (no direct cache vendor usage from domain/application logic).

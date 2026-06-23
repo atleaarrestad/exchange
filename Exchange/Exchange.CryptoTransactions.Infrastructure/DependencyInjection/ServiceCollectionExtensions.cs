@@ -23,6 +23,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<ICryptoTransferIdempotencyStore>(serviceProvider =>
             new SqliteCryptoTransferIdempotencyStore(serviceProvider.GetRequiredService<IDbContextFactory<CryptoTransactionsDbContext>>()));
         services.AddSingleton<ICryptoTransferService, CryptoTransferService>();
+        services.AddSingleton<ICryptoTransferFundsReservationGateway, UnconfiguredCryptoTransferFundsReservationGateway>();
         services.AddSingleton<IBlockchainTransferGateway, UnconfiguredBlockchainTransferGateway>();
         return services;
     }

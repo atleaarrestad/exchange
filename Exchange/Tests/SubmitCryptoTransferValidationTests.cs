@@ -43,9 +43,10 @@ public sealed class SubmitCryptoTransferValidationTests
     public async Task Service_WithInvalidCommand_DoesNotCallGateway()
     {
         var gateway = new TrackingGateway();
+        var fundsReservationGateway = new TrackingFundsReservationGateway();
         var validator = new SubmitCryptoTransferCommandValidator();
         var idempotencyStore = new InMemoryIdempotencyStore();
-        var service = new CryptoTransferService(gateway, idempotencyStore, validator);
+        var service = new CryptoTransferService(gateway, fundsReservationGateway, idempotencyStore, validator);
         var command = new SubmitCryptoTransferCommand(
             "",
             "account-1",
@@ -62,9 +63,10 @@ public sealed class SubmitCryptoTransferValidationTests
     public async Task Service_WithSameIdempotencyKey_CallsGatewayOnceAndReturnsSameReceipt()
     {
         var gateway = new TrackingGateway();
+        var fundsReservationGateway = new TrackingFundsReservationGateway();
         var validator = new SubmitCryptoTransferCommandValidator();
         var idempotencyStore = new InMemoryIdempotencyStore();
-        var service = new CryptoTransferService(gateway, idempotencyStore, validator);
+        var service = new CryptoTransferService(gateway, fundsReservationGateway, idempotencyStore, validator);
         var command = CreateValidCommand();
 
         var first = await service.SubmitAsync(command);
@@ -74,15 +76,17 @@ public sealed class SubmitCryptoTransferValidationTests
         Assert.AreEqual(first.TransferId, second.TransferId);
         Assert.AreEqual(first.GatewayTransactionId, second.GatewayTransactionId);
         Assert.AreEqual(first.TotalDebit, second.TotalDebit);
+        Assert.AreEqual(1, fundsReservationGateway.ReserveCallCount);
     }
 
     [TestMethod]
     public async Task Service_WithSameIdempotencyKeyAcrossAssets_CallsGatewayPerAsset()
     {
         var gateway = new TrackingGateway();
+        var fundsReservationGateway = new TrackingFundsReservationGateway();
         var validator = new SubmitCryptoTransferCommandValidator();
         var idempotencyStore = new InMemoryIdempotencyStore();
-        var service = new CryptoTransferService(gateway, idempotencyStore, validator);
+        var service = new CryptoTransferService(gateway, fundsReservationGateway, idempotencyStore, validator);
 
         var btcCommand = CreateValidCommand();
         var ethCommand = btcCommand with { AssetSymbol = AssetSymbol.Ether.Value };
@@ -97,9 +101,10 @@ public sealed class SubmitCryptoTransferValidationTests
     public async Task Service_WithSameIdempotencyKeyAndDifferentAmount_ThrowsConflictException()
     {
         var gateway = new TrackingGateway();
+        var fundsReservationGateway = new TrackingFundsReservationGateway();
         var validator = new SubmitCryptoTransferCommandValidator();
         var idempotencyStore = new InMemoryIdempotencyStore();
-        var service = new CryptoTransferService(gateway, idempotencyStore, validator);
+        var service = new CryptoTransferService(gateway, fundsReservationGateway, idempotencyStore, validator);
 
         var firstCommand = CreateValidCommand();
         var secondCommand = firstCommand with { Amount = 0.75m };
@@ -119,6 +124,23 @@ public sealed class SubmitCryptoTransferValidationTests
         var exception = Assert.ThrowsExactly<ApplicationValidationException>(() => validator.Validate(command));
 
         Assert.IsTrue(exception.Errors.ContainsKey(nameof(SubmitCryptoTransferCommand.AssetSymbol)));
+    }
+
+    [TestMethod]
+    public async Task Service_WithInsufficientFunds_DoesNotCallGateway()
+    {
+        var gateway = new TrackingGateway();
+        var fundsReservationGateway = new TrackingFundsReservationGateway
+        {
+            ThrowInsufficientFunds = true
+        };
+        var validator = new SubmitCryptoTransferCommandValidator();
+        var idempotencyStore = new InMemoryIdempotencyStore();
+        var service = new CryptoTransferService(gateway, fundsReservationGateway, idempotencyStore, validator);
+
+        await Assert.ThrowsExactlyAsync<InsufficientFundsException>(() => service.SubmitAsync(CreateValidCommand()));
+
+        Assert.IsFalse(gateway.WasCalled);
     }
 
     private static SubmitCryptoTransferCommand CreateValidCommand()
@@ -186,6 +208,50 @@ public sealed class SubmitCryptoTransferValidationTests
             var receipt = await transferFactory(cancellationToken);
             receipts[key] = (requestFingerprint, receipt);
             return receipt;
+        }
+
+    }
+
+    private sealed class TrackingFundsReservationGateway : ICryptoTransferFundsReservationGateway
+    {
+        public bool ThrowInsufficientFunds { get; init; }
+        public int ReserveCallCount { get; private set; }
+
+        public Task ReserveAsync(
+            string sourceAccountId,
+            AssetSymbol assetSymbol,
+            decimal totalDebit,
+            string idempotencyKey,
+            CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            ReserveCallCount++;
+            if (ThrowInsufficientFunds)
+            {
+                throw new InsufficientFundsException("simulated insufficient funds");
+            }
+
+            return Task.CompletedTask;
+        }
+
+        public Task CommitAsync(
+            string sourceAccountId,
+            AssetSymbol assetSymbol,
+            string idempotencyKey,
+            CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return Task.CompletedTask;
+        }
+
+        public Task ReleaseAsync(
+            string sourceAccountId,
+            AssetSymbol assetSymbol,
+            string idempotencyKey,
+            CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return Task.CompletedTask;
         }
     }
 }

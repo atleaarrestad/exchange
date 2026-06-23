@@ -41,4 +41,18 @@ public sealed class CryptoTransferDomainTests
         Assert.AreEqual(1.1285m, transfer.TotalDebit);
         Assert.AreEqual(AssetSymbol.Ether, transfer.Amount.AssetSymbol);
     }
+
+    [TestMethod]
+    public void CryptoTransfer_WithFeeGreaterThanAmount_Throws()
+    {
+        var action = () => new CryptoTransfer(
+            "tx-002",
+            "account-123",
+            "bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kygt080",
+            new CryptoAmount(AssetSymbol.Bitcoin, 0.001m),
+            new NetworkFee(0.01m),
+            DateTimeOffset.UtcNow);
+
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(action);
+    }
 }

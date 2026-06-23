@@ -2,6 +2,8 @@ using Exchange.CryptoTransactions.Application.Contracts;
 using Exchange.CryptoTransactions.Application.Validation;
 using Exchange.CryptoTransactions.Domain.Aggregates;
 using Exchange.CryptoTransactions.Domain.ValueObjects;
+using Polly;
+using Polly.Timeout;
 using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
@@ -10,9 +12,14 @@ namespace Exchange.CryptoTransactions.Application;
 
 public sealed class CryptoTransferService(
     IBlockchainTransferGateway blockchainTransferGateway,
+    ICryptoTransferFundsReservationGateway fundsReservationGateway,
     ICryptoTransferIdempotencyStore idempotencyStore,
     ISubmitCryptoTransferCommandValidator commandValidator) : ICryptoTransferService
 {
+    private static readonly TimeSpan GatewaySubmitTimeout = TimeSpan.FromSeconds(30);
+    private static readonly AsyncTimeoutPolicy<BlockchainTransferResult> GatewayTimeoutPolicy =
+        Policy.TimeoutAsync<BlockchainTransferResult>(GatewaySubmitTimeout, TimeoutStrategy.Optimistic);
+
     public async Task<CryptoTransferReceipt> SubmitAsync(SubmitCryptoTransferCommand command, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(command);
@@ -56,13 +63,47 @@ public sealed class CryptoTransferService(
                     transfer.Fee.Value,
                     transfer.TotalDebit);
 
-                var gatewayResult = await blockchainTransferGateway.SubmitAsync(gatewayRequest, operationCancellationToken);
-                return new CryptoTransferReceipt(
-                    transfer.Id,
-                    gatewayResult.GatewayTransactionId,
-                    gatewayResult.SubmittedAtUtc,
+                await fundsReservationGateway.ReserveAsync(
+                    transfer.SourceAccountId,
+                    transfer.Amount.AssetSymbol,
                     transfer.TotalDebit,
-                    gatewayResult.RequiredConfirmations);
+                    transfer.IdempotencyKey,
+                    operationCancellationToken);
+
+                try
+                {
+                    var gatewayResult = await GatewayTimeoutPolicy.ExecuteAsync(
+                        async token => await blockchainTransferGateway.SubmitAsync(gatewayRequest, token),
+                        operationCancellationToken);
+
+                    await fundsReservationGateway.CommitAsync(
+                        transfer.SourceAccountId,
+                        transfer.Amount.AssetSymbol,
+                        transfer.IdempotencyKey,
+                        operationCancellationToken);
+
+                    return new CryptoTransferReceipt(
+                        transfer.Id,
+                        gatewayResult.GatewayTransactionId,
+                        gatewayResult.SubmittedAtUtc,
+                        transfer.TotalDebit,
+                        gatewayResult.RequiredConfirmations);
+                }
+                catch (TimeoutRejectedException exception)
+                {
+                    throw new BlockchainTransferTimeoutException(
+                        $"Blockchain gateway did not respond within {GatewaySubmitTimeout.TotalSeconds:0} seconds.",
+                        exception);
+                }
+                catch (BlockchainTransferRejectedException)
+                {
+                    await fundsReservationGateway.ReleaseAsync(
+                        transfer.SourceAccountId,
+                        transfer.Amount.AssetSymbol,
+                        transfer.IdempotencyKey,
+                        operationCancellationToken);
+                    throw;
+                }
             },
             cancellationToken);
     }

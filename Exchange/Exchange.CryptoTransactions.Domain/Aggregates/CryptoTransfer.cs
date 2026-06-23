@@ -33,6 +33,11 @@ public sealed class CryptoTransfer
         DestinationAddress = destinationAddress.Trim();
         Amount = amount;
         Fee = fee;
+        if (fee.Value > amount.Value)
+        {
+            throw new ArgumentOutOfRangeException(nameof(fee), fee.Value, "Network fee cannot exceed transfer amount.");
+        }
+
         TotalDebit = checked(amount.Value + fee.Value);
         CreatedAtUtc = createdAtUtc.ToUniversalTime();
     }

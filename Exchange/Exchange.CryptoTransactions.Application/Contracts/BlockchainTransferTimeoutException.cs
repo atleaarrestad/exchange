@@ -6,4 +6,9 @@ public sealed class BlockchainTransferTimeoutException : TimeoutException
         : base(message)
     {
     }
+
+    public BlockchainTransferTimeoutException(string message, Exception innerException)
+        : base(message, innerException)
+    {
+    }
 }

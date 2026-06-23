@@ -13,6 +13,7 @@ public sealed class SqliteCryptoTransferIdempotencyStore : ICryptoTransferIdempo
     private const string PendingReceiptMarker = "";
     private static readonly TimeSpan PollInterval = TimeSpan.FromMilliseconds(50);
     private static readonly TimeSpan PendingLeaseDuration = TimeSpan.FromMinutes(5);
+    private static readonly TimeSpan MaxPendingWaitDuration = TimeSpan.FromSeconds(5);
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
     private readonly IDbContextFactory<CryptoTransactionsDbContext> dbContextFactory;
@@ -47,6 +48,7 @@ public sealed class SqliteCryptoTransferIdempotencyStore : ICryptoTransferIdempo
         var normalizedSourceAccountId = sourceAccountId.Trim();
         var normalizedIdempotencyKey = idempotencyKey.Trim();
         var normalizedRequestFingerprint = requestFingerprint.Trim();
+        var waitStartedAtUtc = DateTimeOffset.UtcNow;
 
         while (true)
         {
@@ -89,7 +91,16 @@ public sealed class SqliteCryptoTransferIdempotencyStore : ICryptoTransferIdempo
             else if (existingRecord.Status == IdempotencyStatus.Pending &&
                      DateTimeOffset.UtcNow - existingRecord.CreatedAtUtc.ToUniversalTime() > PendingLeaseDuration)
             {
-                await TryDeleteStalePendingRecordAsync(existingRecord, cancellationToken);
+                throw new IdempotencyOperationPendingException(
+                    $"Idempotency key '{existingRecord.IdempotencyKey}' has a pending transfer in an unknown state. " +
+                    "Automatic replay is blocked to avoid duplicate transfers.");
+            }
+            else if (existingRecord is not null && existingRecord.Status == IdempotencyStatus.Pending &&
+                     DateTimeOffset.UtcNow - waitStartedAtUtc > MaxPendingWaitDuration)
+            {
+                throw new IdempotencyOperationPendingException(
+                    $"Idempotency key '{existingRecord.IdempotencyKey}' is still being processed. " +
+                    "Retry the same request with the same idempotency key.");
             }
 
             await Task.Delay(PollInterval, cancellationToken);
@@ -104,6 +115,8 @@ public sealed class SqliteCryptoTransferIdempotencyStore : ICryptoTransferIdempo
         Func<CancellationToken, Task<CryptoTransferReceipt>> transferFactory,
         CancellationToken cancellationToken)
     {
+        var waitStartedAtUtc = DateTimeOffset.UtcNow;
+
         try
         {
             var createdReceipt = await transferFactory(cancellationToken);
@@ -119,7 +132,10 @@ public sealed class SqliteCryptoTransferIdempotencyStore : ICryptoTransferIdempo
                 return createdReceipt;
             }
         }
-        catch
+        catch (Exception exception) when (
+            exception is BlockchainTransferRejectedException
+            or InsufficientFundsException
+            or ExternalDependencyNotConfiguredException)
         {
             await TryReleasePendingRecordAsync(sourceAccountId, assetSymbol, idempotencyKey, cancellationToken);
             throw;
@@ -139,6 +155,12 @@ public sealed class SqliteCryptoTransferIdempotencyStore : ICryptoTransferIdempo
             if (existingRecord is not null)
             {
                 EnsureMatchingRequestFingerprint(existingRecord, requestFingerprint);
+            }
+
+            if (DateTimeOffset.UtcNow - waitStartedAtUtc > MaxPendingWaitDuration)
+            {
+                throw new IdempotencyOperationPendingException(
+                    $"Idempotency key '{idempotencyKey}' is still being processed. Retry the same request with the same idempotency key.");
             }
 
             await Task.Delay(PollInterval, cancellationToken);
@@ -224,20 +246,6 @@ public sealed class SqliteCryptoTransferIdempotencyStore : ICryptoTransferIdempo
                           && record.AssetSymbol == assetSymbol.Value
                           && record.IdempotencyKey == idempotencyKey
                           && record.Status == IdempotencyStatus.Pending)
-            .ExecuteDeleteAsync(cancellationToken);
-    }
-
-    private async Task TryDeleteStalePendingRecordAsync(
-        CryptoTransferIdempotencyReceiptEntity existingRecord,
-        CancellationToken cancellationToken)
-    {
-        await using var context = await dbContextFactory.CreateDbContextAsync(cancellationToken);
-        await context.CryptoTransferIdempotencyReceipts
-            .Where(record => record.SourceAccountId == existingRecord.SourceAccountId
-                          && record.AssetSymbol == existingRecord.AssetSymbol
-                          && record.IdempotencyKey == existingRecord.IdempotencyKey
-                          && record.Status == IdempotencyStatus.Pending
-                          && record.CreatedAtUtc == existingRecord.CreatedAtUtc)
             .ExecuteDeleteAsync(cancellationToken);
     }
 

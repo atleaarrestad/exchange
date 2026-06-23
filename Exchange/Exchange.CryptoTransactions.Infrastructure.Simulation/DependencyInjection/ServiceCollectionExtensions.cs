@@ -11,12 +11,17 @@ public static class ServiceCollectionExtensions
     {
         ArgumentNullException.ThrowIfNull(configuration);
 
-        var options = SimulatedBlockchainTransferGatewayOptions.FromConfiguration(
-            configuration.GetSection(SimulationConfigurationKeys.CryptoTransactionsSimulationSection));
+        var simulationSection = configuration.GetSection(SimulationConfigurationKeys.CryptoTransactionsSimulationSection);
+        var blockchainGatewayOptions = SimulatedBlockchainTransferGatewayOptions.FromConfiguration(
+            simulationSection);
+        var fundsReservationOptions = SimulatedFundsReservationOptions.FromConfiguration(
+            simulationSection);
 
-        services.AddSingleton(options);
+        services.AddSingleton(blockchainGatewayOptions);
+        services.AddSingleton(fundsReservationOptions);
         services.AddSingleton<IBlockchainTransferStrategy, SimulatedBitcoinTransferStrategy>();
         services.AddSingleton<IBlockchainTransferStrategy, SimulatedEtherTransferStrategy>();
+        services.AddSingleton<ICryptoTransferFundsReservationGateway, SimulatedCryptoTransferFundsReservationGateway>();
         services.AddSingleton<IBlockchainTransferGateway, SimulatedBlockchainTransferGateway>();
         return services;
     }

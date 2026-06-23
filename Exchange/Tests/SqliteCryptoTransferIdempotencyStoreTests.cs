@@ -2,6 +2,7 @@ using Exchange.CryptoTransactions.Application;
 using Exchange.CryptoTransactions.Application.Contracts;
 using Exchange.CryptoTransactions.Domain.ValueObjects;
 using Exchange.CryptoTransactions.Infrastructure.Gateways;
+using Microsoft.Data.Sqlite;
 
 namespace Tests;
 
@@ -56,7 +57,7 @@ public sealed class SqliteCryptoTransferIdempotencyStoreTests
                 callCount++;
                 if (callCount == 1)
                 {
-                    throw new InvalidOperationException("simulated failure");
+                    throw new BlockchainTransferRejectedException("simulated rejection");
                 }
 
                 await Task.Yield();
@@ -68,13 +69,53 @@ public sealed class SqliteCryptoTransferIdempotencyStoreTests
                     12);
             }
 
-            await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
+            await Assert.ThrowsExactlyAsync<BlockchainTransferRejectedException>(() =>
                 store.ExecuteOnceAsync("account-1", AssetSymbol.Ether, "idem-2", "req-2", Factory));
 
             var retry = await store.ExecuteOnceAsync("account-1", AssetSymbol.Ether, "idem-2", "req-2", Factory);
 
             Assert.AreEqual(2, callCount);
             Assert.AreEqual("gateway-2", retry.GatewayTransactionId);
+        }
+        finally
+        {
+            DeleteFileIfExists(dbPath);
+        }
+    }
+
+    [TestMethod]
+    public async Task ExecuteOnceAsync_WhenFundsReservationFails_DoesNotPersistFailedResult()
+    {
+        var store = CreateStore(out var dbPath);
+        try
+        {
+            var callCount = 0;
+
+            async Task<CryptoTransferReceipt> Factory(CancellationToken cancellationToken)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                callCount++;
+                if (callCount == 1)
+                {
+                    throw new InsufficientFundsException("simulated insufficient funds");
+                }
+
+                await Task.Yield();
+                return new CryptoTransferReceipt(
+                    Guid.CreateVersion7(),
+                    "gateway-after-funds",
+                    DateTimeOffset.UtcNow,
+                    0.8m,
+                    6);
+            }
+
+            await Assert.ThrowsExactlyAsync<InsufficientFundsException>(() =>
+                store.ExecuteOnceAsync("account-funds", AssetSymbol.Ether, "idem-funds", "req-funds", Factory));
+
+            var retry = await store.ExecuteOnceAsync("account-funds", AssetSymbol.Ether, "idem-funds", "req-funds", Factory);
+
+            Assert.AreEqual(2, callCount);
+            Assert.AreEqual("gateway-after-funds", retry.GatewayTransactionId);
         }
         finally
         {
@@ -151,6 +192,47 @@ public sealed class SqliteCryptoTransferIdempotencyStoreTests
         }
     }
 
+    [TestMethod]
+    public async Task ExecuteOnceAsync_WhenTimedOutTransferBecomesStale_ThrowsPendingExceptionAndPreventsReplay()
+    {
+        var store = CreateStore(out var dbPath);
+        const string sourceAccountId = "account-3";
+        const string idempotencyKey = "idem-timeout";
+        const string requestFingerprint = "req-timeout";
+
+        try
+        {
+            Task<CryptoTransferReceipt> TimeoutFactory(CancellationToken cancellationToken)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                throw new BlockchainTransferTimeoutException("simulated timeout");
+            }
+
+            await Assert.ThrowsExactlyAsync<BlockchainTransferTimeoutException>(() =>
+                store.ExecuteOnceAsync(sourceAccountId, AssetSymbol.Bitcoin, idempotencyKey, requestFingerprint, TimeoutFactory));
+
+            MakePendingRecordStale(dbPath, sourceAccountId, AssetSymbol.Bitcoin.Value, idempotencyKey);
+
+            Task<CryptoTransferReceipt> SuccessFactory(CancellationToken cancellationToken)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                return Task.FromResult(new CryptoTransferReceipt(
+                    Guid.CreateVersion7(),
+                    "gateway-replay",
+                    DateTimeOffset.UtcNow,
+                    0.5m,
+                    2));
+            }
+
+            await Assert.ThrowsExactlyAsync<IdempotencyOperationPendingException>(() =>
+                store.ExecuteOnceAsync(sourceAccountId, AssetSymbol.Bitcoin, idempotencyKey, requestFingerprint, SuccessFactory));
+        }
+        finally
+        {
+            DeleteFileIfExists(dbPath);
+        }
+    }
+
     private static SqliteCryptoTransferIdempotencyStore CreateStore(out string dbPath)
     {
         dbPath = Path.Combine(Path.GetTempPath(), $"crypto-idempotency-{Guid.NewGuid():N}.db");
@@ -163,5 +245,26 @@ public sealed class SqliteCryptoTransferIdempotencyStoreTests
         {
             File.Delete(path);
         }
+    }
+
+    private static void MakePendingRecordStale(string dbPath, string sourceAccountId, string assetSymbol, string idempotencyKey)
+    {
+        using var connection = new SqliteConnection($"Data Source={dbPath};Pooling=False");
+        connection.Open();
+
+        using var command = connection.CreateCommand();
+        command.CommandText = """
+            UPDATE crypto_transfer_idempotency_receipts
+            SET created_at_utc = $createdAtUtc
+            WHERE source_account_id = $sourceAccountId
+              AND asset_symbol = $assetSymbol
+              AND idempotency_key = $idempotencyKey
+              AND status = 0;
+            """;
+        command.Parameters.AddWithValue("$createdAtUtc", DateTimeOffset.UtcNow.AddMinutes(-10));
+        command.Parameters.AddWithValue("$sourceAccountId", sourceAccountId);
+        command.Parameters.AddWithValue("$assetSymbol", assetSymbol);
+        command.Parameters.AddWithValue("$idempotencyKey", idempotencyKey);
+        _ = command.ExecuteNonQuery();
     }
 }

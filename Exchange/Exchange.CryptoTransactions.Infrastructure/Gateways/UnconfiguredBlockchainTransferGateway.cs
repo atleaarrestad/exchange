@@ -8,6 +8,7 @@ public sealed class UnconfiguredBlockchainTransferGateway : IBlockchainTransferG
     {
         ArgumentNullException.ThrowIfNull(request);
         cancellationToken.ThrowIfCancellationRequested();
-        throw new InvalidOperationException("No blockchain transfer gateway is configured. Enable simulation or provide a real gateway implementation.");
+        throw new ExternalDependencyNotConfiguredException(
+            "No blockchain transfer gateway is configured. Enable simulation or provide a real gateway implementation.");
     }
 }
