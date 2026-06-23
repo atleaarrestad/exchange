@@ -8,6 +8,8 @@ public sealed class CryptoTransferTimeoutReconciler(
     ICryptoTransferFundsReservationGateway fundsReservationGateway,
     ICryptoTransferIdempotencyStore idempotencyStore) : ICryptoTransferTimeoutReconciler
 {
+    private static readonly TimeSpan NotSubmittedReleaseSafetyWindow = TimeSpan.FromMinutes(2);
+
     public async Task ReconcileAsync(DateTimeOffset staleBeforeUtc, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -37,6 +39,12 @@ public sealed class CryptoTransferTimeoutReconciler(
 
             if (transferStatus.StatusKind == BlockchainTransferStatusKind.NotSubmitted)
             {
+                var nowUtc = DateTimeOffset.UtcNow;
+                if (nowUtc - operation.CreatedAtUtc.ToUniversalTime() < NotSubmittedReleaseSafetyWindow)
+                {
+                    continue;
+                }
+
                 await fundsReservationGateway.ReleaseAsync(
                     operation.SourceAccountId,
                     operation.AssetSymbol,

@@ -66,11 +66,7 @@ public sealed class SimulatedCryptoTransferFundsReservationGateway(
         var normalizedSourceAccountId = sourceAccountId.Trim();
         var normalizedIdempotencyKey = idempotencyKey.Trim();
         var reservationKey = (normalizedSourceAccountId, assetSymbol, normalizedIdempotencyKey);
-        if (!activeReservations.TryRemove(reservationKey, out _))
-        {
-            throw new InvalidOperationException(
-                $"Cannot commit funds reservation for account '{normalizedSourceAccountId}' and asset '{assetSymbol.Value}' because idempotency key '{normalizedIdempotencyKey}' has no active reservation.");
-        }
+        _ = activeReservations.TryRemove(reservationKey, out _);
         return Task.CompletedTask;
     }
 
@@ -90,8 +86,7 @@ public sealed class SimulatedCryptoTransferFundsReservationGateway(
         {
             if (!activeReservations.TryRemove(reservationKey, out var reservedAmount))
             {
-                throw new InvalidOperationException(
-                    $"Cannot release funds reservation for account '{normalizedSourceAccountId}' and asset '{assetSymbol.Value}' because idempotency key '{normalizedIdempotencyKey}' has no active reservation.");
+                return Task.CompletedTask;
             }
 
             var availableBalance = availableBalances.GetOrAdd(balanceKey, _ => options.ResolveDefaultBalance(assetSymbol));

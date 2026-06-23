@@ -61,6 +61,31 @@ public sealed class CryptoTransferTimeoutReconcilerTests
     }
 
     [TestMethod]
+    public async Task ReconcileAsync_WhenGatewayShowsNotSubmittedInsideSafetyWindow_DoesNotReleaseReservation()
+    {
+        var operation = new PendingCryptoTransferOperation(
+            "account-1",
+            AssetSymbol.Ether,
+            "idem-young",
+            "fingerprint-young",
+            0.25m,
+            DateTimeOffset.UtcNow.AddSeconds(-30),
+            DateTimeOffset.UtcNow.AddSeconds(-30));
+        var idempotencyStore = new TrackingIdempotencyStore(operation);
+        var gateway = new TrackingGateway(new BlockchainTransferStatus(BlockchainTransferStatusKind.NotSubmitted));
+        var fundsGateway = new TrackingFundsGateway();
+        var reconciler = new CryptoTransferTimeoutReconciler(gateway, fundsGateway, idempotencyStore);
+
+        await reconciler.ReconcileAsync(DateTimeOffset.UtcNow.AddMinutes(-1));
+
+        Assert.AreEqual(1, idempotencyStore.AcquirePendingCount);
+        Assert.AreEqual(0, idempotencyStore.MarkCompletedCount);
+        Assert.AreEqual(0, idempotencyStore.ReleasePendingCount);
+        Assert.AreEqual(0, fundsGateway.CommitCount);
+        Assert.AreEqual(0, fundsGateway.ReleaseCount);
+    }
+
+    [TestMethod]
     public async Task ReconcileAsync_WhenGatewayStatusUnknown_ThrowsAndLeavesPendingUntouched()
     {
         var operation = new PendingCryptoTransferOperation(

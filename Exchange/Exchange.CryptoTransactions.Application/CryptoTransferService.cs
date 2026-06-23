@@ -46,7 +46,7 @@ public sealed class CryptoTransferService(
             idempotencyKey,
             requestFingerprint,
             totalDebit,
-            async operationCancellationToken =>
+            async _ =>
             {
                 var transfer = new CryptoTransfer(
                     idempotencyKey,
@@ -65,24 +65,26 @@ public sealed class CryptoTransferService(
                     transfer.Fee.Value,
                     transfer.TotalDebit);
 
+                var reservationCreated = false;
                 await fundsReservationGateway.ReserveAsync(
                     transfer.SourceAccountId,
                     transfer.Amount.AssetSymbol,
                     transfer.TotalDebit,
                     transfer.IdempotencyKey,
-                    operationCancellationToken);
+                    CancellationToken.None);
+                reservationCreated = true;
 
                 try
                 {
                     var gatewayResult = await GatewayTimeoutPolicy.ExecuteAsync(
-                        async token => await blockchainTransferGateway.SubmitAsync(gatewayRequest, token),
-                        operationCancellationToken);
+                        async _ => await blockchainTransferGateway.SubmitAsync(gatewayRequest, CancellationToken.None),
+                        CancellationToken.None);
 
                     await fundsReservationGateway.CommitAsync(
                         transfer.SourceAccountId,
                         transfer.Amount.AssetSymbol,
                         transfer.IdempotencyKey,
-                        operationCancellationToken);
+                        CancellationToken.None);
 
                     return new CryptoTransferReceipt(
                         transfer.Id,
@@ -99,20 +101,26 @@ public sealed class CryptoTransferService(
                 }
                 catch (BlockchainTransferRejectedException)
                 {
-                    await fundsReservationGateway.ReleaseAsync(
-                        transfer.SourceAccountId,
-                        transfer.Amount.AssetSymbol,
-                        transfer.IdempotencyKey,
-                        operationCancellationToken);
+                    if (reservationCreated)
+                    {
+                        await fundsReservationGateway.ReleaseAsync(
+                            transfer.SourceAccountId,
+                            transfer.Amount.AssetSymbol,
+                            transfer.IdempotencyKey,
+                            CancellationToken.None);
+                    }
                     throw;
                 }
                 catch (ExternalDependencyNotConfiguredException)
                 {
-                    await fundsReservationGateway.ReleaseAsync(
-                        transfer.SourceAccountId,
-                        transfer.Amount.AssetSymbol,
-                        transfer.IdempotencyKey,
-                        operationCancellationToken);
+                    if (reservationCreated)
+                    {
+                        await fundsReservationGateway.ReleaseAsync(
+                            transfer.SourceAccountId,
+                            transfer.Amount.AssetSymbol,
+                            transfer.IdempotencyKey,
+                            CancellationToken.None);
+                    }
                     throw;
                 }
             },

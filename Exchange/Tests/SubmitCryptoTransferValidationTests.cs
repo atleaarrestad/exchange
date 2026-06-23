@@ -161,6 +161,32 @@ public sealed class SubmitCryptoTransferValidationTests
         Assert.AreEqual(1, fundsReservationGateway.ReleaseCallCount);
     }
 
+    [TestMethod]
+    public async Task Service_WhenCallerCancellationOccursAfterStart_CompletesAndCommitsReservation()
+    {
+        var gateway = new TrackingGateway
+        {
+            SubmitDelay = TimeSpan.FromMilliseconds(100)
+        };
+        var fundsReservationGateway = new TrackingFundsReservationGateway();
+        var validator = new SubmitCryptoTransferCommandValidator();
+        var idempotencyStore = new InMemoryIdempotencyStore();
+        var service = new CryptoTransferService(gateway, fundsReservationGateway, idempotencyStore, validator);
+        using var cancellationTokenSource = new CancellationTokenSource();
+
+        var submitTask = service.SubmitAsync(CreateValidCommand(), cancellationTokenSource.Token);
+        await Task.Delay(20);
+        cancellationTokenSource.Cancel();
+
+        var receipt = await submitTask;
+
+        Assert.AreEqual("gateway-1", receipt.GatewayTransactionId);
+        Assert.AreEqual(1, gateway.CallCount);
+        Assert.AreEqual(1, fundsReservationGateway.ReserveCallCount);
+        Assert.AreEqual(1, fundsReservationGateway.CommitCallCount);
+        Assert.AreEqual(0, fundsReservationGateway.ReleaseCallCount);
+    }
+
     private static SubmitCryptoTransferCommand CreateValidCommand()
     {
         return new SubmitCryptoTransferCommand(
@@ -175,10 +201,11 @@ public sealed class SubmitCryptoTransferValidationTests
     private sealed class TrackingGateway : IBlockchainTransferGateway
     {
         public bool ThrowDependencyNotConfigured { get; init; }
+        public TimeSpan SubmitDelay { get; init; } = TimeSpan.Zero;
         public bool WasCalled { get; private set; }
         public int CallCount { get; private set; }
 
-        public Task<BlockchainTransferResult> SubmitAsync(BlockchainTransferRequest request, CancellationToken cancellationToken = default)
+        public async Task<BlockchainTransferResult> SubmitAsync(BlockchainTransferRequest request, CancellationToken cancellationToken = default)
         {
             WasCalled = true;
             CallCount++;
@@ -187,7 +214,12 @@ public sealed class SubmitCryptoTransferValidationTests
                 throw new ExternalDependencyNotConfiguredException("simulated missing gateway");
             }
 
-            return Task.FromResult(new BlockchainTransferResult("gateway-1", DateTimeOffset.UtcNow));
+            if (SubmitDelay > TimeSpan.Zero)
+            {
+                await Task.Delay(SubmitDelay, CancellationToken.None);
+            }
+
+            return new BlockchainTransferResult("gateway-1", DateTimeOffset.UtcNow);
         }
 
         public Task<BlockchainTransferStatus> GetTransferStatusAsync(
@@ -284,6 +316,7 @@ public sealed class SubmitCryptoTransferValidationTests
     {
         public bool ThrowInsufficientFunds { get; init; }
         public int ReserveCallCount { get; private set; }
+        public int CommitCallCount { get; private set; }
         public int ReleaseCallCount { get; private set; }
 
         public Task ReserveAsync(
@@ -310,6 +343,7 @@ public sealed class SubmitCryptoTransferValidationTests
             CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            CommitCallCount++;
             return Task.CompletedTask;
         }
 
