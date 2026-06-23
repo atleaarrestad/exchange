@@ -64,6 +64,33 @@ Treat correctness, auditability, and safety as mandatory.
 3. Keep simulation logic out of domain and application core.
 4. For very small integrations, colocating real + simulation implementations in the same infrastructure project is acceptable temporarily, but default to dedicated simulation projects as the codebase grows.
 
+## Scalability Strategy
+
+1. Start as a **modular monolith** (single Web API codebase) with strict bounded-context boundaries.
+2. The Web API must be stateless so multiple instances can be scaled horizontally behind a load balancer.
+3. Prefer asynchronous workflows for non-immediate operations, but avoid premature distributed complexity.
+4. Design for messaging from day one without requiring a broker on day one:
+   - define domain/integration events at boundaries
+   - enforce idempotency keys for externally triggered operations
+   - use retry policies and dead-letter style handling patterns
+   - implement the Outbox pattern for reliable event publication
+5. Prioritize financial correctness under concurrency before throughput:
+   - deterministic transaction workflows
+   - strict ledger consistency and reconciliation
+   - exactly-once effect semantics via idempotent processing
+6. Introduce external messaging infrastructure (for example MassTransit + broker) only when load/SLA/operational evidence justifies it, then migrate high-volume paths first (order execution, market ingestion, settlement).
+
+## MassTransit Adoption Guidance
+
+1. It is acceptable to adopt **MassTransit now** to reduce future transition cost.
+2. In local/dev/simulation environments, prefer **in-memory transport** for fast setup.
+3. Keep message contracts, consumers, idempotency behavior, retry policies, and error handling production-oriented even when transport is in-memory.
+4. Treat in-memory transport as non-durable and single-process:
+   - no durability guarantees
+   - no true cross-instance distribution
+   - behavior may differ from real broker failure modes
+5. Keep transport configuration environment-driven so production can switch to a real broker (for example RabbitMQ or Azure Service Bus) without rewriting domain/application logic.
+
 ## Financial Safety Requirements
 
 1. Never use floating-point types (`float`, `double`) for money/amount calculations; use `decimal`.
