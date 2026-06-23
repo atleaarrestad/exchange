@@ -8,6 +8,7 @@ public interface ICryptoTransferIdempotencyStore
         string sourceAccountId,
         AssetSymbol assetSymbol,
         string idempotencyKey,
+        string requestFingerprint,
         Func<CancellationToken, Task<CryptoTransferReceipt>> transferFactory,
         CancellationToken cancellationToken = default);
 }

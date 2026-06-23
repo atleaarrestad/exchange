@@ -1,4 +1,5 @@
 using Exchange.CryptoTransactions.Application;
+using Exchange.CryptoTransactions.Application.Contracts;
 using Exchange.CryptoTransactions.Domain.ValueObjects;
 using Exchange.CryptoTransactions.Infrastructure.Gateways;
 
@@ -27,8 +28,8 @@ public sealed class SqliteCryptoTransferIdempotencyStoreTests
                     3));
             }
 
-            var first = await store.ExecuteOnceAsync("account-1", AssetSymbol.Bitcoin, "idem-1", Factory);
-            var second = await store.ExecuteOnceAsync("account-1", AssetSymbol.Bitcoin, "idem-1", Factory);
+            var first = await store.ExecuteOnceAsync("account-1", AssetSymbol.Bitcoin, "idem-1", "req-1", Factory);
+            var second = await store.ExecuteOnceAsync("account-1", AssetSymbol.Bitcoin, "idem-1", "req-1", Factory);
 
             Assert.AreEqual(1, callCount);
             Assert.AreEqual(first.TransferId, second.TransferId);
@@ -68,9 +69,9 @@ public sealed class SqliteCryptoTransferIdempotencyStoreTests
             }
 
             await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
-                store.ExecuteOnceAsync("account-1", AssetSymbol.Ether, "idem-2", Factory));
+                store.ExecuteOnceAsync("account-1", AssetSymbol.Ether, "idem-2", "req-2", Factory));
 
-            var retry = await store.ExecuteOnceAsync("account-1", AssetSymbol.Ether, "idem-2", Factory);
+            var retry = await store.ExecuteOnceAsync("account-1", AssetSymbol.Ether, "idem-2", "req-2", Factory);
 
             Assert.AreEqual(2, callCount);
             Assert.AreEqual("gateway-2", retry.GatewayTransactionId);
@@ -104,8 +105,8 @@ public sealed class SqliteCryptoTransferIdempotencyStoreTests
                     2);
             }
 
-            var firstTask = storeA.ExecuteOnceAsync("account-2", AssetSymbol.Bitcoin, "idem-concurrent", Factory);
-            var secondTask = storeB.ExecuteOnceAsync("account-2", AssetSymbol.Bitcoin, "idem-concurrent", Factory);
+            var firstTask = storeA.ExecuteOnceAsync("account-2", AssetSymbol.Bitcoin, "idem-concurrent", "req-concurrent", Factory);
+            var secondTask = storeB.ExecuteOnceAsync("account-2", AssetSymbol.Bitcoin, "idem-concurrent", "req-concurrent", Factory);
 
             await Task.WhenAll(firstTask, secondTask);
 
@@ -115,6 +116,34 @@ public sealed class SqliteCryptoTransferIdempotencyStoreTests
             Assert.AreEqual(1, callCount);
             Assert.AreEqual(first.TransferId, second.TransferId);
             Assert.AreEqual(first.GatewayTransactionId, second.GatewayTransactionId);
+        }
+        finally
+        {
+            DeleteFileIfExists(dbPath);
+        }
+    }
+
+    [TestMethod]
+    public async Task ExecuteOnceAsync_WithSameKeyAndDifferentRequestFingerprint_ThrowsConflictException()
+    {
+        var store = CreateStore(out var dbPath);
+        try
+        {
+            Task<CryptoTransferReceipt> Factory(CancellationToken cancellationToken)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                return Task.FromResult(new CryptoTransferReceipt(
+                    Guid.CreateVersion7(),
+                    "gateway-conflict",
+                    DateTimeOffset.UtcNow,
+                    1.001m,
+                    3));
+            }
+
+            _ = await store.ExecuteOnceAsync("account-1", AssetSymbol.Bitcoin, "idem-conflict", "req-a", Factory);
+
+            await Assert.ThrowsExactlyAsync<IdempotencyKeyConflictException>(() =>
+                store.ExecuteOnceAsync("account-1", AssetSymbol.Bitcoin, "idem-conflict", "req-b", Factory));
         }
         finally
         {

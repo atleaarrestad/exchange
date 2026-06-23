@@ -94,6 +94,23 @@ public sealed class SubmitCryptoTransferValidationTests
     }
 
     [TestMethod]
+    public async Task Service_WithSameIdempotencyKeyAndDifferentAmount_ThrowsConflictException()
+    {
+        var gateway = new TrackingGateway();
+        var validator = new SubmitCryptoTransferCommandValidator();
+        var idempotencyStore = new InMemoryIdempotencyStore();
+        var service = new CryptoTransferService(gateway, idempotencyStore, validator);
+
+        var firstCommand = CreateValidCommand();
+        var secondCommand = firstCommand with { Amount = 0.75m };
+
+        _ = await service.SubmitAsync(firstCommand);
+
+        await Assert.ThrowsExactlyAsync<IdempotencyKeyConflictException>(() =>
+            service.SubmitAsync(secondCommand));
+    }
+
+    [TestMethod]
     public void Validator_WithUnsupportedAsset_ThrowsValidationException()
     {
         var validator = new SubmitCryptoTransferCommandValidator();
@@ -130,31 +147,44 @@ public sealed class SubmitCryptoTransferValidationTests
 
     private sealed class InMemoryIdempotencyStore : ICryptoTransferIdempotencyStore
     {
-        private readonly Dictionary<(string SourceAccountId, AssetSymbol AssetSymbol, string IdempotencyKey), CryptoTransferReceipt> receipts = new();
+        private readonly Dictionary<(string SourceAccountId, AssetSymbol AssetSymbol, string IdempotencyKey), (string RequestFingerprint, CryptoTransferReceipt Receipt)> receipts = new();
 
         public Task<CryptoTransferReceipt> ExecuteOnceAsync(
             string sourceAccountId,
             AssetSymbol assetSymbol,
             string idempotencyKey,
+            string requestFingerprint,
             Func<CancellationToken, Task<CryptoTransferReceipt>> transferFactory,
             CancellationToken cancellationToken = default)
         {
-            var key = (sourceAccountId.Trim(), assetSymbol, idempotencyKey.Trim());
-            if (receipts.TryGetValue(key, out var existingReceipt))
+            var key = (
+                SourceAccountId: sourceAccountId.Trim(),
+                AssetSymbol: assetSymbol,
+                IdempotencyKey: idempotencyKey.Trim());
+            var normalizedRequestFingerprint = requestFingerprint.Trim();
+
+            if (receipts.TryGetValue(key, out var existing))
             {
-                return Task.FromResult(existingReceipt);
+                if (!string.Equals(existing.RequestFingerprint, normalizedRequestFingerprint, StringComparison.Ordinal))
+                {
+                    throw new IdempotencyKeyConflictException(
+                        $"Idempotency key '{key.IdempotencyKey}' was already used with a different transfer request.");
+                }
+
+                return Task.FromResult(existing.Receipt);
             }
 
-            return StoreAndReturnAsync(key, transferFactory, cancellationToken);
+            return StoreAndReturnAsync(key, normalizedRequestFingerprint, transferFactory, cancellationToken);
         }
 
         private async Task<CryptoTransferReceipt> StoreAndReturnAsync(
             (string SourceAccountId, AssetSymbol AssetSymbol, string IdempotencyKey) key,
+            string requestFingerprint,
             Func<CancellationToken, Task<CryptoTransferReceipt>> transferFactory,
             CancellationToken cancellationToken)
         {
             var receipt = await transferFactory(cancellationToken);
-            receipts[key] = receipt;
+            receipts[key] = (requestFingerprint, receipt);
             return receipt;
         }
     }

@@ -38,6 +38,14 @@ public sealed class ApiExceptionMappingMiddleware(
                 "Blockchain gateway timeout",
                 exception.Message);
         }
+        catch (IdempotencyKeyConflictException exception)
+        {
+            await WriteProblemAsync(
+                context,
+                StatusCodes.Status409Conflict,
+                "Idempotency conflict",
+                exception.Message);
+        }
         catch (Exception exception)
         {
             logger.LogError(exception, "Unhandled exception for request {Path}", context.Request.Path);

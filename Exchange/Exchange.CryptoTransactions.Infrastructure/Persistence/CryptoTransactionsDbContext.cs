@@ -25,6 +25,10 @@ public sealed class CryptoTransactionsDbContext(DbContextOptions<CryptoTransacti
             .HasColumnName("idempotency_key")
             .HasMaxLength(128);
 
+        receipt.Property(entity => entity.RequestFingerprint)
+            .HasColumnName("request_fingerprint")
+            .HasMaxLength(64);
+
         receipt.Property(entity => entity.ReceiptJson)
             .HasColumnName("receipt_json");
 

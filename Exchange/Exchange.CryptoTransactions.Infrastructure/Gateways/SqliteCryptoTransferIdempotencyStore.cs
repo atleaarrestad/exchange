@@ -3,6 +3,7 @@ using Exchange.CryptoTransactions.Application;
 using Exchange.CryptoTransactions.Application.Contracts;
 using Exchange.CryptoTransactions.Domain.ValueObjects;
 using Exchange.CryptoTransactions.Infrastructure.Persistence;
+using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 
 namespace Exchange.CryptoTransactions.Infrastructure.Gateways;
@@ -32,17 +33,20 @@ public sealed class SqliteCryptoTransferIdempotencyStore : ICryptoTransferIdempo
         string sourceAccountId,
         AssetSymbol assetSymbol,
         string idempotencyKey,
+        string requestFingerprint,
         Func<CancellationToken, Task<CryptoTransferReceipt>> transferFactory,
         CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(sourceAccountId);
         ArgumentException.ThrowIfNullOrWhiteSpace(idempotencyKey);
+        ArgumentException.ThrowIfNullOrWhiteSpace(requestFingerprint);
         ArgumentNullException.ThrowIfNull(transferFactory);
 
         await EnsureInitializedAsync(cancellationToken);
 
         var normalizedSourceAccountId = sourceAccountId.Trim();
         var normalizedIdempotencyKey = idempotencyKey.Trim();
+        var normalizedRequestFingerprint = requestFingerprint.Trim();
 
         while (true)
         {
@@ -54,6 +58,11 @@ public sealed class SqliteCryptoTransferIdempotencyStore : ICryptoTransferIdempo
                 normalizedIdempotencyKey,
                 cancellationToken);
 
+            if (existingRecord is not null)
+            {
+                EnsureMatchingRequestFingerprint(existingRecord, normalizedRequestFingerprint);
+            }
+
             if (existingRecord is not null && existingRecord.Status == IdempotencyStatus.Completed)
             {
                 return DeserializeReceipt(existingRecord.ReceiptJson);
@@ -61,12 +70,18 @@ public sealed class SqliteCryptoTransferIdempotencyStore : ICryptoTransferIdempo
 
             if (existingRecord is null)
             {
-                if (await TryInsertPendingRecordAsync(normalizedSourceAccountId, assetSymbol, normalizedIdempotencyKey, cancellationToken))
+                if (await TryInsertPendingRecordAsync(
+                        normalizedSourceAccountId,
+                        assetSymbol,
+                        normalizedIdempotencyKey,
+                        normalizedRequestFingerprint,
+                        cancellationToken))
                 {
                     return await ExecuteOwnedPendingAsync(
                         normalizedSourceAccountId,
                         assetSymbol,
                         normalizedIdempotencyKey,
+                        normalizedRequestFingerprint,
                         transferFactory,
                         cancellationToken);
                 }
@@ -85,6 +100,7 @@ public sealed class SqliteCryptoTransferIdempotencyStore : ICryptoTransferIdempo
         string sourceAccountId,
         AssetSymbol assetSymbol,
         string idempotencyKey,
+        string requestFingerprint,
         Func<CancellationToken, Task<CryptoTransferReceipt>> transferFactory,
         CancellationToken cancellationToken)
     {
@@ -116,7 +132,13 @@ public sealed class SqliteCryptoTransferIdempotencyStore : ICryptoTransferIdempo
             var existingRecord = await GetExistingRecordAsync(sourceAccountId, assetSymbol, idempotencyKey, cancellationToken);
             if (existingRecord is not null && existingRecord.Status == IdempotencyStatus.Completed)
             {
+                EnsureMatchingRequestFingerprint(existingRecord, requestFingerprint);
                 return DeserializeReceipt(existingRecord.ReceiptJson);
+            }
+
+            if (existingRecord is not null)
+            {
+                EnsureMatchingRequestFingerprint(existingRecord, requestFingerprint);
             }
 
             await Task.Delay(PollInterval, cancellationToken);
@@ -143,6 +165,7 @@ public sealed class SqliteCryptoTransferIdempotencyStore : ICryptoTransferIdempo
         string sourceAccountId,
         AssetSymbol assetSymbol,
         string idempotencyKey,
+        string requestFingerprint,
         CancellationToken cancellationToken)
     {
         await using var context = await dbContextFactory.CreateDbContextAsync(cancellationToken);
@@ -151,6 +174,7 @@ public sealed class SqliteCryptoTransferIdempotencyStore : ICryptoTransferIdempo
             SourceAccountId = sourceAccountId,
             AssetSymbol = assetSymbol.Value,
             IdempotencyKey = idempotencyKey,
+            RequestFingerprint = requestFingerprint,
             ReceiptJson = PendingReceiptMarker,
             CreatedAtUtc = DateTimeOffset.UtcNow,
             Status = IdempotencyStatus.Pending
@@ -161,7 +185,7 @@ public sealed class SqliteCryptoTransferIdempotencyStore : ICryptoTransferIdempo
             await context.SaveChangesAsync(cancellationToken);
             return true;
         }
-        catch (DbUpdateException)
+        catch (DbUpdateException exception) when (IsUniqueConstraintViolation(exception))
         {
             return false;
         }
@@ -239,7 +263,7 @@ public sealed class SqliteCryptoTransferIdempotencyStore : ICryptoTransferIdempo
             }
 
             await using var context = await dbContextFactory.CreateDbContextAsync(cancellationToken);
-            await context.Database.EnsureCreatedAsync(cancellationToken);
+            await context.Database.MigrateAsync(cancellationToken);
             isInitialized = true;
         }
         finally
@@ -269,5 +293,34 @@ public sealed class SqliteCryptoTransferIdempotencyStore : ICryptoTransferIdempo
 
         public ValueTask<CryptoTransactionsDbContext> CreateDbContextAsync(CancellationToken cancellationToken = default)
             => ValueTask.FromResult(CreateDbContext());
+    }
+
+    private static bool IsUniqueConstraintViolation(DbUpdateException exception)
+    {
+        if (exception.InnerException is not SqliteException sqliteException)
+        {
+            return false;
+        }
+
+        const int SqliteConstraintErrorCode = 19;
+        const int SqlitePrimaryKeyConstraintExtendedCode = 1555;
+        const int SqliteUniqueConstraintExtendedCode = 2067;
+
+        return sqliteException.SqliteErrorCode == SqliteConstraintErrorCode &&
+               (sqliteException.SqliteExtendedErrorCode == SqlitePrimaryKeyConstraintExtendedCode ||
+                sqliteException.SqliteExtendedErrorCode == SqliteUniqueConstraintExtendedCode);
+    }
+
+    private static void EnsureMatchingRequestFingerprint(
+        CryptoTransferIdempotencyReceiptEntity existingRecord,
+        string requestFingerprint)
+    {
+        if (string.Equals(existingRecord.RequestFingerprint, requestFingerprint, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        throw new IdempotencyKeyConflictException(
+            $"Idempotency key '{existingRecord.IdempotencyKey}' was already used with a different transfer request.");
     }
 }
