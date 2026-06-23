@@ -86,7 +86,7 @@ public sealed class CryptoTransferTimeoutReconcilerTests
     }
 
     [TestMethod]
-    public async Task ReconcileAsync_WhenGatewayStatusUnknown_ThrowsAndLeavesPendingUntouched()
+    public async Task ReconcileAsync_WhenGatewayStatusUnknown_ThrowsSpecificExceptionAndLeavesPendingUntouched()
     {
         var operation = new PendingCryptoTransferOperation(
             "account-1",
@@ -101,7 +101,7 @@ public sealed class CryptoTransferTimeoutReconcilerTests
         var fundsGateway = new TrackingFundsGateway();
         var reconciler = new CryptoTransferTimeoutReconciler(gateway, fundsGateway, idempotencyStore);
 
-        await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
+        await Assert.ThrowsExactlyAsync<UnknownBlockchainTransferStatusException>(() =>
             reconciler.ReconcileAsync(DateTimeOffset.UtcNow.AddMinutes(-1)));
 
         Assert.AreEqual(1, idempotencyStore.AcquirePendingCount);

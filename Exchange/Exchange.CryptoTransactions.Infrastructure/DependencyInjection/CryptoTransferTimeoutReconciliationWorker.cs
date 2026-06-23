@@ -1,4 +1,5 @@
 using Exchange.CryptoTransactions.Application;
+using Exchange.CryptoTransactions.Application.Contracts;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
@@ -23,6 +24,12 @@ public sealed class CryptoTransferTimeoutReconciliationWorker(
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
                 break;
+            }
+            catch (UnknownBlockchainTransferStatusException exception)
+            {
+                logger.LogCritical(
+                    exception,
+                    "Crypto transfer timeout reconciliation found pending operations with unknown blockchain status. Manual investigation is required.");
             }
             catch (InvalidOperationException exception)
             {

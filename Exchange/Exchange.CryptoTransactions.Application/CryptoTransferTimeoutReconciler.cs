@@ -93,7 +93,7 @@ public sealed class CryptoTransferTimeoutReconciler(
                 unknownOperations.Select(static operation =>
                     $"{operation.SourceAccountId}/{operation.AssetSymbol.Value}/{operation.IdempotencyKey}"));
 
-            throw new InvalidOperationException(
+            throw new UnknownBlockchainTransferStatusException(
                 $"Unable to reconcile {unknownOperations.Count} pending crypto transfer operation(s) because gateway status is unknown: {unknownSummary}. Manual investigation is required.");
         }
     }
