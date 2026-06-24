@@ -71,7 +71,6 @@ public sealed class EfCoreCryptoGatewaySettingsService(
         await using var context = await dbContextFactory.CreateDbContextAsync(cancellationToken);
         context.CryptoGatewaySettingsProfiles.Add(entity);
         context.SettingsChangeOutboxEntries.Add(SettingsChangeOutboxEntryFactory.Create(
-            SettingsChangeOutboxMessageTypes.CryptoGatewaySettingsProfileChanged,
             new CryptoGatewaySettingsProfileChangedIntegrationEvent(entity.Id, SettingsProfileChangeType.Created, DateTimeOffset.UtcNow)));
         await context.SaveChangesAsync(cancellationToken);
         await krakenGatewayOptionsProvider.RefreshAsync(entity.Id, cancellationToken);
@@ -104,7 +103,6 @@ public sealed class EfCoreCryptoGatewaySettingsService(
         entity.UpdatedAtUtc = DateTimeOffset.UtcNow;
 
         context.SettingsChangeOutboxEntries.Add(SettingsChangeOutboxEntryFactory.Create(
-            SettingsChangeOutboxMessageTypes.CryptoGatewaySettingsProfileChanged,
             new CryptoGatewaySettingsProfileChangedIntegrationEvent(entity.Id, SettingsProfileChangeType.Updated, DateTimeOffset.UtcNow)));
         await context.SaveChangesAsync(cancellationToken);
         await krakenGatewayOptionsProvider.RefreshAsync(entity.Id, cancellationToken);
@@ -132,7 +130,6 @@ public sealed class EfCoreCryptoGatewaySettingsService(
         entity.ApiSecret = apiSecret;
         entity.UpdatedAtUtc = DateTimeOffset.UtcNow;
         context.SettingsChangeOutboxEntries.Add(SettingsChangeOutboxEntryFactory.Create(
-            SettingsChangeOutboxMessageTypes.CryptoGatewaySettingsProfileChanged,
             new CryptoGatewaySettingsProfileChangedIntegrationEvent(entity.Id, SettingsProfileChangeType.CredentialsUpdated, DateTimeOffset.UtcNow)));
         await context.SaveChangesAsync(cancellationToken);
         await krakenGatewayOptionsProvider.RefreshAsync(entity.Id, cancellationToken);
@@ -153,7 +150,6 @@ public sealed class EfCoreCryptoGatewaySettingsService(
 
         context.CryptoGatewaySettingsProfiles.Remove(entity);
         context.SettingsChangeOutboxEntries.Add(SettingsChangeOutboxEntryFactory.Create(
-            SettingsChangeOutboxMessageTypes.CryptoGatewaySettingsProfileChanged,
             new CryptoGatewaySettingsProfileChangedIntegrationEvent(id, SettingsProfileChangeType.Deleted, DateTimeOffset.UtcNow)));
         await context.SaveChangesAsync(cancellationToken);
         await krakenGatewayOptionsProvider.RefreshAsync(null, cancellationToken);

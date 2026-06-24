@@ -8,10 +8,9 @@ namespace Exchange.CryptoTransactions.Infrastructure.Messaging;
 public sealed class SettingsChangeOutboxPublisherWorker(
     IDbContextFactory<CryptoTransactionsDbContext> dbContextFactory,
     ISettingsChangeOutboxPublisher outboxPublisher,
+    SettingsChangeOutboxPublisherOptions options,
     ILogger<SettingsChangeOutboxPublisherWorker> logger) : BackgroundService
 {
-    private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(2);
-    private static readonly TimeSpan LeaseDuration = TimeSpan.FromSeconds(30);
     private readonly string workerId = $"{Environment.MachineName.ToLowerInvariant()}-{Environment.ProcessId}-{Guid.CreateVersion7()}";
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -21,7 +20,7 @@ public sealed class SettingsChangeOutboxPublisherWorker(
             try
             {
                 await PublishPendingEntriesAsync(stoppingToken);
-                await Task.Delay(PollInterval, stoppingToken);
+                await Task.Delay(options.PollInterval, stoppingToken);
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
@@ -59,17 +58,43 @@ public sealed class SettingsChangeOutboxPublisherWorker(
             {
                 throw;
             }
+            catch (InvalidOperationException exception)
+            {
+                entry.PublishAttemptCount = options.MaxPublishAttempts;
+                entry.LeaseOwnerId = null;
+                entry.LeaseExpiresAtUtc = null;
+                entry.LeaseToken = null;
+                logger.LogError(
+                    exception,
+                    "Dead-lettered settings outbox entry {OutboxEntryId} of type {MessageType} due to deterministic payload/type failure.",
+                    entry.Id,
+                    entry.MessageType);
+            }
             catch (Exception exception)
             {
                 entry.PublishAttemptCount = checked(entry.PublishAttemptCount + 1);
                 entry.LeaseOwnerId = null;
                 entry.LeaseExpiresAtUtc = null;
                 entry.LeaseToken = null;
-                logger.LogError(
-                    exception,
-                    "Failed publishing settings outbox entry {OutboxEntryId} of type {MessageType}.",
-                    entry.Id,
-                    entry.MessageType);
+                if (entry.PublishAttemptCount >= options.MaxPublishAttempts)
+                {
+                    logger.LogError(
+                        exception,
+                        "Dead-lettered settings outbox entry {OutboxEntryId} of type {MessageType} after reaching max attempts ({MaxPublishAttempts}).",
+                        entry.Id,
+                        entry.MessageType,
+                        options.MaxPublishAttempts);
+                }
+                else
+                {
+                    logger.LogError(
+                        exception,
+                        "Failed publishing settings outbox entry {OutboxEntryId} of type {MessageType} (attempt {Attempt}/{MaxPublishAttempts}).",
+                        entry.Id,
+                        entry.MessageType,
+                        entry.PublishAttemptCount,
+                        options.MaxPublishAttempts);
+                }
             }
 
             await context.SaveChangesAsync(cancellationToken);
@@ -81,15 +106,16 @@ public sealed class SettingsChangeOutboxPublisherWorker(
         CancellationToken cancellationToken)
     {
         var now = DateTimeOffset.UtcNow;
-        var leaseExpiresAtUtc = now.Add(LeaseDuration);
+        var leaseExpiresAtUtc = now.Add(options.LeaseDuration);
         var leaseToken = Guid.CreateVersion7();
 
         var candidateIds = await context.SettingsChangeOutboxEntries
             .AsNoTracking()
             .Where(entry => entry.PublishedAtUtc == null
+                && entry.PublishAttemptCount < options.MaxPublishAttempts
                 && (entry.LeaseExpiresAtUtc == null || entry.LeaseExpiresAtUtc < now))
             .OrderBy(entry => entry.CreatedAtUtc)
-            .Take(100)
+            .Take(options.ClaimBatchSize)
             .Select(entry => entry.Id)
             .ToArrayAsync(cancellationToken);
 
@@ -101,6 +127,7 @@ public sealed class SettingsChangeOutboxPublisherWorker(
         await context.SettingsChangeOutboxEntries
             .Where(entry => candidateIds.Contains(entry.Id)
                 && entry.PublishedAtUtc == null
+                && entry.PublishAttemptCount < options.MaxPublishAttempts
                 && (entry.LeaseExpiresAtUtc == null || entry.LeaseExpiresAtUtc < now))
             .ExecuteUpdateAsync(
                 setters => setters

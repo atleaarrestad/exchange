@@ -1,5 +1,3 @@
-using System.Text.Json;
-using Exchange.CryptoTransactions.Application.Messaging;
 using Exchange.CryptoTransactions.Infrastructure.Persistence;
 using MassTransit;
 
@@ -10,24 +8,8 @@ public sealed class SettingsChangeOutboxPublisher(IBus bus) : ISettingsChangeOut
     public async Task PublishAsync(SettingsChangeOutboxEntryEntity entry, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(entry);
-
-        object message = entry.MessageType switch
-        {
-            SettingsChangeOutboxMessageTypes.CryptoSettingsProfileChanged =>
-                Deserialize<CryptoSettingsProfileChangedIntegrationEvent>(entry.PayloadJson),
-            SettingsChangeOutboxMessageTypes.CryptoGatewaySettingsProfileChanged =>
-                Deserialize<CryptoGatewaySettingsProfileChangedIntegrationEvent>(entry.PayloadJson),
-            SettingsChangeOutboxMessageTypes.CryptoGatewayResilienceSettingsProfileChanged =>
-                Deserialize<CryptoGatewayResilienceSettingsProfileChangedIntegrationEvent>(entry.PayloadJson),
-            _ => throw new InvalidOperationException($"Unknown outbox message type '{entry.MessageType}'.")
-        };
+        object message = SettingsChangeOutboxMessageRegistry.DeserializeMessage(entry.MessageType, entry.PayloadJson);
 
         await bus.Publish(message, cancellationToken);
-    }
-
-    private static T Deserialize<T>(string payloadJson)
-    {
-        var value = JsonSerializer.Deserialize<T>(payloadJson);
-        return value ?? throw new InvalidOperationException($"Unable to deserialize payload to {typeof(T).Name}.");
     }
 }

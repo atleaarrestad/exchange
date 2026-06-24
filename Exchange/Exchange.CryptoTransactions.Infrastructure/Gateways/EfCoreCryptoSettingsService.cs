@@ -84,7 +84,6 @@ public sealed class EfCoreCryptoSettingsService(
         await using var context = await dbContextFactory.CreateDbContextAsync(cancellationToken);
         context.CryptoSettingsProfiles.Add(entity);
         context.SettingsChangeOutboxEntries.Add(SettingsChangeOutboxEntryFactory.Create(
-            SettingsChangeOutboxMessageTypes.CryptoSettingsProfileChanged,
             new CryptoSettingsProfileChangedIntegrationEvent(entity.Id, SettingsProfileChangeType.Created, DateTimeOffset.UtcNow)));
         await context.SaveChangesAsync(cancellationToken);
         await tradingPolicyProvider.RefreshAsync(entity.Id, cancellationToken);
@@ -131,7 +130,6 @@ public sealed class EfCoreCryptoSettingsService(
         entity.UpdatedAtUtc = DateTimeOffset.UtcNow;
 
         context.SettingsChangeOutboxEntries.Add(SettingsChangeOutboxEntryFactory.Create(
-            SettingsChangeOutboxMessageTypes.CryptoSettingsProfileChanged,
             new CryptoSettingsProfileChangedIntegrationEvent(entity.Id, SettingsProfileChangeType.Updated, DateTimeOffset.UtcNow)));
         await context.SaveChangesAsync(cancellationToken);
         await tradingPolicyProvider.RefreshAsync(entity.Id, cancellationToken);
@@ -152,7 +150,6 @@ public sealed class EfCoreCryptoSettingsService(
 
         context.CryptoSettingsProfiles.Remove(entity);
         context.SettingsChangeOutboxEntries.Add(SettingsChangeOutboxEntryFactory.Create(
-            SettingsChangeOutboxMessageTypes.CryptoSettingsProfileChanged,
             new CryptoSettingsProfileChangedIntegrationEvent(id, SettingsProfileChangeType.Deleted, DateTimeOffset.UtcNow)));
         await context.SaveChangesAsync(cancellationToken);
         await tradingPolicyProvider.RefreshAsync(null, cancellationToken);

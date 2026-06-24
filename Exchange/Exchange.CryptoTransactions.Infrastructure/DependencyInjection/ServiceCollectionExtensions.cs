@@ -28,6 +28,7 @@ public static class ServiceCollectionExtensions
         var blockchainGatewayResilienceOptions = BlockchainGatewayResilienceOptions.FromConfiguration(configuration);
         var blockchainGatewayResiliencePolicyOptions = blockchainGatewayResilienceOptions.ToPolicyOptions();
         var brokeredTradingOptions = BrokeredTradingOptions.FromConfiguration(configuration);
+        var settingsChangeOutboxPublisherOptions = SettingsChangeOutboxPublisherOptions.FromConfiguration(configuration);
         var brokeredTradingPolicy = new BrokeredTradingPolicy
         {
             QuoteTtlSeconds = brokeredTradingOptions.QuoteTtlSeconds,
@@ -48,6 +49,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton(blockchainGatewayResilienceOptions);
         services.AddSingleton(blockchainGatewayResiliencePolicyOptions);
         services.AddSingleton(brokeredTradingOptions);
+        services.AddSingleton(settingsChangeOutboxPublisherOptions);
         services.AddSingleton(brokeredTradingPolicy);
         services.AddSingleton<IBrokeredTradingPolicyProvider, RuntimeBrokeredTradingPolicyProvider>();
         services.AddSingleton<IKrakenGatewayOptionsProvider, RuntimeKrakenGatewayOptionsProvider>();

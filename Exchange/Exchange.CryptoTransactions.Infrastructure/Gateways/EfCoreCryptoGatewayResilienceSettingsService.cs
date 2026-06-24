@@ -73,7 +73,6 @@ public sealed class EfCoreCryptoGatewayResilienceSettingsService(
         await using var context = await dbContextFactory.CreateDbContextAsync(cancellationToken);
         context.CryptoGatewayResilienceSettingsProfiles.Add(entity);
         context.SettingsChangeOutboxEntries.Add(SettingsChangeOutboxEntryFactory.Create(
-            SettingsChangeOutboxMessageTypes.CryptoGatewayResilienceSettingsProfileChanged,
             new CryptoGatewayResilienceSettingsProfileChangedIntegrationEvent(entity.Id, SettingsProfileChangeType.Created, DateTimeOffset.UtcNow)));
         await context.SaveChangesAsync(cancellationToken);
         await policyOptionsProvider.RefreshAsync(entity.Id, cancellationToken);
@@ -111,7 +110,6 @@ public sealed class EfCoreCryptoGatewayResilienceSettingsService(
         entity.UpdatedAtUtc = DateTimeOffset.UtcNow;
 
         context.SettingsChangeOutboxEntries.Add(SettingsChangeOutboxEntryFactory.Create(
-            SettingsChangeOutboxMessageTypes.CryptoGatewayResilienceSettingsProfileChanged,
             new CryptoGatewayResilienceSettingsProfileChangedIntegrationEvent(entity.Id, SettingsProfileChangeType.Updated, DateTimeOffset.UtcNow)));
         await context.SaveChangesAsync(cancellationToken);
         await policyOptionsProvider.RefreshAsync(entity.Id, cancellationToken);
@@ -132,7 +130,6 @@ public sealed class EfCoreCryptoGatewayResilienceSettingsService(
 
         context.CryptoGatewayResilienceSettingsProfiles.Remove(entity);
         context.SettingsChangeOutboxEntries.Add(SettingsChangeOutboxEntryFactory.Create(
-            SettingsChangeOutboxMessageTypes.CryptoGatewayResilienceSettingsProfileChanged,
             new CryptoGatewayResilienceSettingsProfileChangedIntegrationEvent(id, SettingsProfileChangeType.Deleted, DateTimeOffset.UtcNow)));
         await context.SaveChangesAsync(cancellationToken);
         await policyOptionsProvider.RefreshAsync(null, cancellationToken);

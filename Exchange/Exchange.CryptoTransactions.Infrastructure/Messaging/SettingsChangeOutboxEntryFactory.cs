@@ -5,6 +5,12 @@ namespace Exchange.CryptoTransactions.Infrastructure.Messaging;
 
 public static class SettingsChangeOutboxEntryFactory
 {
+    public static SettingsChangeOutboxEntryEntity Create<TPayload>(TPayload payload)
+    {
+        ArgumentNullException.ThrowIfNull(payload);
+        return Create(SettingsChangeOutboxMessageRegistry.ResolveMessageType<TPayload>(), payload);
+    }
+
     public static SettingsChangeOutboxEntryEntity Create(string messageType, object payload)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(messageType);
