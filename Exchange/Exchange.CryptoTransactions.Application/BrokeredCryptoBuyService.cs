@@ -88,18 +88,78 @@ public sealed class BrokeredCryptoBuyService(
         var receipt = await cryptoOwnershipLedger.RecordCustomerBuyAsync(ledgerRecord, cancellationToken);
         if (quote.ExternalHedgeQuantity > 0m)
         {
-            await externalHedgeBatchQueue.RegisterAsync(
-                new BufferedExternalHedgeRequest(
-                    command.CustomerAccountId.Trim(),
-                    normalizedClientOrderId,
-                    assetSymbol,
-                    quoteCurrency,
-                    quote.ExternalHedgeQuantity,
-                    executedAtUtc),
-                cancellationToken);
+            try
+            {
+                await externalHedgeBatchQueue.RegisterAsync(
+                    new BufferedExternalHedgeRequest(
+                        command.CustomerAccountId.Trim(),
+                        normalizedClientOrderId,
+                        assetSymbol,
+                        quoteCurrency,
+                        quote.ExternalHedgeQuantity,
+                        executedAtUtc),
+                    cancellationToken);
+            }
+            catch (Exception registrationException)
+            {
+                try
+                {
+                    await CompensateAsync(
+                        new CompensateBrokeredCryptoBuyCommand(
+                            normalizedClientOrderId,
+                            command.CustomerAccountId.Trim(),
+                            assetSymbol.Value,
+                            "External hedge buffer registration failed.",
+                            DateTimeOffset.UtcNow),
+                        cancellationToken);
+                }
+                catch (Exception compensationException)
+                {
+                    throw new InvalidOperationException(
+                        $"Brokered crypto buy '{normalizedClientOrderId}' was booked but external hedge buffering failed and compensation also failed. Manual intervention is required.",
+                        compensationException);
+                }
+
+                throw new InvalidOperationException(
+                    $"Brokered crypto buy '{normalizedClientOrderId}' was compensated because external hedge buffering failed.",
+                    registrationException);
+            }
         }
 
         return receipt;
+    }
+
+    public async Task CompensateAsync(
+        CompensateBrokeredCryptoBuyCommand command,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(command);
+        ArgumentException.ThrowIfNullOrWhiteSpace(command.ClientOrderId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(command.CustomerAccountId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(command.AssetSymbol);
+        ArgumentException.ThrowIfNullOrWhiteSpace(command.CompensationReason);
+
+        var assetSymbol = AssetSymbol.Parse(command.AssetSymbol, nameof(command.AssetSymbol));
+        var normalizedCustomerAccountId = command.CustomerAccountId.Trim();
+        var normalizedClientOrderId = command.ClientOrderId.Trim();
+        var cancellationResult = await externalHedgeBatchQueue.CancelRegistrationAsync(
+            normalizedCustomerAccountId,
+            normalizedClientOrderId,
+            cancellationToken);
+        if (cancellationResult.Status == BufferedExternalHedgeCancellationStatus.AlreadyExecuted)
+        {
+            throw new InvalidOperationException(
+                $"Brokered crypto buy '{normalizedClientOrderId}' cannot be compensated because external hedge execution '{cancellationResult.ExecutedExternalOrderId}' is already executed.");
+        }
+
+        await cryptoOwnershipLedger.CompensateCustomerBuyAsync(
+            new OwnershipLedgerBuyCompensationCommand(
+                normalizedClientOrderId,
+                normalizedCustomerAccountId,
+                assetSymbol,
+                command.CompensationReason.Trim(),
+                command.CompensatedAtUtc),
+            cancellationToken);
     }
 
     private async Task<PricedBuy> BuildPricedBuyAsync(

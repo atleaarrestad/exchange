@@ -7,6 +7,7 @@ public sealed class BrokeredFiatCryptoBuyStateMachine : MassTransitStateMachine<
     public State ReservingFiat { get; private set; } = null!;
     public State BookingCrypto { get; private set; } = null!;
     public State CapturingFiat { get; private set; } = null!;
+    public State ReversingCrypto { get; private set; } = null!;
     public State ReleasingReservation { get; private set; } = null!;
     public State Completed { get; private set; } = null!;
     public State Failed { get; private set; } = null!;
@@ -18,6 +19,8 @@ public sealed class BrokeredFiatCryptoBuyStateMachine : MassTransitStateMachine<
     public Event<CryptoBookingFailedForBrokeredBuy> CryptoBookingFailed { get; private set; } = null!;
     public Event<FiatCapturedForBrokeredBuy> FiatCaptured { get; private set; } = null!;
     public Event<FiatCaptureFailedForBrokeredBuy> FiatCaptureFailed { get; private set; } = null!;
+    public Event<CryptoBookingReversedForBrokeredBuy> CryptoBookingReversed { get; private set; } = null!;
+    public Event<CryptoBookingReverseFailedForBrokeredBuy> CryptoBookingReverseFailed { get; private set; } = null!;
     public Event<FiatReservationReleasedForBrokeredBuy> FiatReservationReleased { get; private set; } = null!;
     public Event<FiatReservationReleaseFailedForBrokeredBuy> FiatReservationReleaseFailed { get; private set; } = null!;
 
@@ -32,6 +35,8 @@ public sealed class BrokeredFiatCryptoBuyStateMachine : MassTransitStateMachine<
         Event(() => CryptoBookingFailed, x => x.CorrelateById(context => context.Message.CorrelationId));
         Event(() => FiatCaptured, x => x.CorrelateById(context => context.Message.CorrelationId));
         Event(() => FiatCaptureFailed, x => x.CorrelateById(context => context.Message.CorrelationId));
+        Event(() => CryptoBookingReversed, x => x.CorrelateById(context => context.Message.CorrelationId));
+        Event(() => CryptoBookingReverseFailed, x => x.CorrelateById(context => context.Message.CorrelationId));
         Event(() => FiatReservationReleased, x => x.CorrelateById(context => context.Message.CorrelationId));
         Event(() => FiatReservationReleaseFailed, x => x.CorrelateById(context => context.Message.CorrelationId));
 
@@ -108,14 +113,29 @@ public sealed class BrokeredFiatCryptoBuyStateMachine : MassTransitStateMachine<
                 .Finalize(),
             When(FiatCaptureFailed)
                 .Then(context => { context.Saga.FailureReason = context.Message.FailureReason; })
+                .Publish(context => new ReverseCryptoBookingForBrokeredBuy(
+                    context.Saga.CorrelationId,
+                    context.Saga.ClientOrderId,
+                    context.Saga.CustomerAccountId,
+                    context.Saga.AssetSymbol,
+                    context.Message.FailureReason,
+                    DateTimeOffset.UtcNow))
+                .TransitionTo(ReversingCrypto));
+
+        During(ReversingCrypto,
+            When(CryptoBookingReversed)
                 .Publish(context => new ReleaseFiatReservationForBrokeredBuy(
                     context.Saga.CorrelationId,
                     context.Saga.ClientOrderId,
                     context.Saga.CustomerAccountId,
                     context.Saga.QuoteCurrency,
-                    context.Saga.CapturedAmount > 0m ? context.Saga.CapturedAmount : context.Saga.ReservedAmount,
+                    context.Saga.ReservedAmount,
                     DateTimeOffset.UtcNow))
-                .TransitionTo(ReleasingReservation));
+                .TransitionTo(ReleasingReservation),
+            When(CryptoBookingReverseFailed)
+                .Then(context => { context.Saga.FailureReason = context.Message.FailureReason; })
+                .TransitionTo(Failed)
+                .Finalize());
 
         During(ReleasingReservation,
             When(FiatReservationReleased)

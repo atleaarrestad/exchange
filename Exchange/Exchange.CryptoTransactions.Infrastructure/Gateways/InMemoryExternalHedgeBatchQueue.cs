@@ -11,6 +11,7 @@ public sealed class InMemoryExternalHedgeBatchQueue(
     private readonly Lock gate = new();
     private readonly Dictionary<BatchKey, List<BufferedExternalHedgeRequest>> pendingByBatch = new();
     private readonly HashSet<RegisteredOrderKey> registeredOrderKeys = [];
+    private readonly HashSet<RegisteredOrderKey> executedOrderKeys = [];
     private readonly SemaphoreSlim executeGate = new(1, 1);
 
     public Task RegisterAsync(BufferedExternalHedgeRequest request, CancellationToken cancellationToken = default)
@@ -59,6 +60,44 @@ public sealed class InMemoryExternalHedgeBatchQueue(
         }
 
         return Task.CompletedTask;
+    }
+
+    public Task<BufferedExternalHedgeCancellationResult> CancelRegistrationAsync(
+        string customerAccountId,
+        string clientOrderId,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(customerAccountId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(clientOrderId);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var registeredOrderKey = RegisteredOrderKey.Create(customerAccountId.Trim(), clientOrderId.Trim());
+        lock (gate)
+        {
+            if (executedOrderKeys.Contains(registeredOrderKey))
+            {
+                return Task.FromResult(new BufferedExternalHedgeCancellationResult(
+                    BufferedExternalHedgeCancellationStatus.AlreadyExecuted,
+                    null));
+            }
+
+            foreach (var pending in pendingByBatch.Values)
+            {
+                var removed = pending.RemoveAll(candidate =>
+                    string.Equals(candidate.CustomerAccountId, registeredOrderKey.CustomerAccountId, StringComparison.Ordinal)
+                    && string.Equals(candidate.ClientOrderId, registeredOrderKey.ClientOrderId, StringComparison.Ordinal));
+                if (removed > 0)
+                {
+                    return Task.FromResult(new BufferedExternalHedgeCancellationResult(
+                        BufferedExternalHedgeCancellationStatus.RemovedPending,
+                        null));
+                }
+            }
+        }
+
+        return Task.FromResult(new BufferedExternalHedgeCancellationResult(
+            BufferedExternalHedgeCancellationStatus.NotFound,
+            null));
     }
 
     public async Task ExecuteDueAsync(CancellationToken cancellationToken = default)
@@ -162,6 +201,11 @@ public sealed class InMemoryExternalHedgeBatchQueue(
         // Executed order keys are retained in registeredOrderKeys to enforce idempotent registration.
         lock (gate)
         {
+            foreach (var item in batch.Items)
+            {
+                executedOrderKeys.Add(RegisteredOrderKey.Create(item.CustomerAccountId, item.ClientOrderId));
+            }
+
             if (pendingByBatch.TryGetValue(batch.BatchKey, out var pending) && pending.Count == 0)
             {
                 pendingByBatch.Remove(batch.BatchKey);

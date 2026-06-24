@@ -122,6 +122,35 @@ public sealed class BrokeredCryptoBuyServiceTests
                 "NOK")));
     }
 
+    [TestMethod]
+    public async Task ExecuteAsync_WhenHedgeQueueRegistrationFails_CompensatesBookedCrypto()
+    {
+        var ownershipLedger = new InMemoryOwnershipLedger(availableInventory: 1m);
+        var hedgeBatchQueue = new InMemoryExternalHedgeBatchQueue
+        {
+            ThrowOnRegister = true
+        };
+        var service = CreateService(ownershipLedger: ownershipLedger, externalHedgeBatchQueue: hedgeBatchQueue);
+        var quote = await service.QuoteAsync(new QuoteBrokeredCryptoBuyCommand(
+            "customer-6",
+            "BTC",
+            2m,
+            "NOK"));
+
+        await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
+            service.ExecuteAsync(new ExecuteBrokeredCryptoBuyCommand(
+                quote.QuoteId,
+                "order-6",
+                "customer-6",
+                "BTC",
+                2m,
+                "NOK")));
+
+        Assert.AreEqual(1m, await ownershipLedger.GetAvailablePlatformInventoryAsync(AssetSymbol.Bitcoin));
+        Assert.AreEqual(0m, ownershipLedger.GetCustomerHolding("customer-6", AssetSymbol.Bitcoin));
+        Assert.AreEqual(0, hedgeBatchQueue.Registered.Count);
+    }
+
     private static BrokeredCryptoBuyService CreateService(
         decimal availableInventory = 5m,
         InMemoryOwnershipLedger? ownershipLedger = null,
@@ -163,12 +192,35 @@ public sealed class BrokeredCryptoBuyServiceTests
     private sealed class InMemoryExternalHedgeBatchQueue : IExternalHedgeBatchQueue
     {
         public List<BufferedExternalHedgeRequest> Registered { get; } = new();
+        public bool ThrowOnRegister { get; set; }
 
         public Task RegisterAsync(BufferedExternalHedgeRequest request, CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            if (ThrowOnRegister)
+            {
+                throw new InvalidOperationException("queue unavailable");
+            }
+
             Registered.Add(request);
             return Task.CompletedTask;
+        }
+
+        public Task<BufferedExternalHedgeCancellationResult> CancelRegistrationAsync(
+            string customerAccountId,
+            string clientOrderId,
+            CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var removed = Registered.RemoveAll(candidate =>
+                string.Equals(candidate.CustomerAccountId, customerAccountId.Trim(), StringComparison.Ordinal)
+                && string.Equals(candidate.ClientOrderId, clientOrderId.Trim(), StringComparison.Ordinal));
+
+            return Task.FromResult(new BufferedExternalHedgeCancellationResult(
+                removed > 0
+                    ? BufferedExternalHedgeCancellationStatus.RemovedPending
+                    : BufferedExternalHedgeCancellationStatus.NotFound,
+                null));
         }
 
         public Task ExecuteDueAsync(CancellationToken cancellationToken = default)
@@ -247,7 +299,9 @@ public sealed class BrokeredCryptoBuyServiceTests
             [AssetSymbol.Bitcoin] = availableInventory,
             [AssetSymbol.Ether] = 0m
         };
+        private readonly Dictionary<(string CustomerAccountId, AssetSymbol AssetSymbol), decimal> customerHoldings = new();
         private readonly Dictionary<(string CustomerAccountId, AssetSymbol AssetSymbol, string ClientOrderId), BrokeredCryptoBuyReceipt> executed = new();
+        private readonly HashSet<(string CustomerAccountId, AssetSymbol AssetSymbol, string ClientOrderId)> compensated = [];
 
         public Task<decimal> GetAvailablePlatformInventoryAsync(AssetSymbol assetSymbol, CancellationToken cancellationToken = default)
         {
@@ -279,6 +333,9 @@ public sealed class BrokeredCryptoBuyServiceTests
             }
 
             platformInventory[command.AssetSymbol] = checked(currentInventory - command.InternalFillQuantity);
+            var holdingKey = (command.CustomerAccountId, command.AssetSymbol);
+            customerHoldings.TryGetValue(holdingKey, out var currentHolding);
+            customerHoldings[holdingKey] = checked(currentHolding + command.Quantity);
             var receipt = new BrokeredCryptoBuyReceipt(
                 command.ClientOrderId,
                 command.CustomerAccountId,
@@ -293,6 +350,42 @@ public sealed class BrokeredCryptoBuyServiceTests
                 command.ExternalHedgeOrderId);
             executed[(command.CustomerAccountId, command.AssetSymbol, command.ClientOrderId)] = receipt;
             return Task.FromResult(receipt);
+        }
+
+        public Task CompensateCustomerBuyAsync(
+            OwnershipLedgerBuyCompensationCommand command,
+            CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var executionKey = (command.CustomerAccountId.Trim(), command.AssetSymbol, command.ClientOrderId.Trim());
+            if (compensated.Contains(executionKey))
+            {
+                return Task.CompletedTask;
+            }
+
+            if (!executed.TryGetValue(executionKey, out var execution))
+            {
+                throw new InvalidOperationException("buy execution not found");
+            }
+
+            var holdingKey = (execution.CustomerAccountId, command.AssetSymbol);
+            customerHoldings.TryGetValue(holdingKey, out var currentHolding);
+            if (currentHolding < execution.Quantity)
+            {
+                throw new InvalidOperationException("insufficient holding");
+            }
+
+            customerHoldings[holdingKey] = checked(currentHolding - execution.Quantity);
+            platformInventory.TryGetValue(command.AssetSymbol, out var currentInventory);
+            platformInventory[command.AssetSymbol] = checked(currentInventory + execution.InternalFillQuantity);
+            compensated.Add(executionKey);
+            return Task.CompletedTask;
+        }
+
+        public decimal GetCustomerHolding(string customerAccountId, AssetSymbol assetSymbol)
+        {
+            customerHoldings.TryGetValue((customerAccountId, assetSymbol), out var quantity);
+            return quantity;
         }
     }
 }

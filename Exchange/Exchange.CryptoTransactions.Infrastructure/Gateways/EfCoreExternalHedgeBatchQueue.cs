@@ -63,6 +63,44 @@ public sealed class EfCoreExternalHedgeBatchQueue(
         }
     }
 
+    public async Task<BufferedExternalHedgeCancellationResult> CancelRegistrationAsync(
+        string customerAccountId,
+        string clientOrderId,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(customerAccountId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(clientOrderId);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var normalizedCustomerAccountId = customerAccountId.Trim();
+        var normalizedClientOrderId = clientOrderId.Trim();
+        await using var context = await dbContextFactory.CreateDbContextAsync(cancellationToken);
+        var entry = await context.ExternalHedgeBatchEntries
+            .SingleOrDefaultAsync(candidate =>
+                candidate.CustomerAccountId == normalizedCustomerAccountId
+                && candidate.ClientOrderId == normalizedClientOrderId,
+                cancellationToken);
+        if (entry is null)
+        {
+            return new BufferedExternalHedgeCancellationResult(
+                BufferedExternalHedgeCancellationStatus.NotFound,
+                null);
+        }
+
+        if (entry.ExecutedAtUtc is not null)
+        {
+            return new BufferedExternalHedgeCancellationResult(
+                BufferedExternalHedgeCancellationStatus.AlreadyExecuted,
+                entry.ExecutedExternalOrderId);
+        }
+
+        context.ExternalHedgeBatchEntries.Remove(entry);
+        await context.SaveChangesAsync(cancellationToken);
+        return new BufferedExternalHedgeCancellationResult(
+            BufferedExternalHedgeCancellationStatus.RemovedPending,
+            null);
+    }
+
     public async Task ExecuteDueAsync(CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();

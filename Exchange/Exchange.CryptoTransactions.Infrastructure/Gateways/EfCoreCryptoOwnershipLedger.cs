@@ -209,6 +209,141 @@ public sealed class EfCoreCryptoOwnershipLedger(
             command.ExternalHedgeOrderId);
     }
 
+    public async Task CompensateCustomerBuyAsync(
+        OwnershipLedgerBuyCompensationCommand command,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(command);
+        cancellationToken.ThrowIfCancellationRequested();
+        Validate(command);
+
+        var normalizedCustomerAccountId = command.CustomerAccountId.Trim();
+        var normalizedClientOrderId = command.ClientOrderId.Trim();
+        var operationId = BuildBuyOperationId(normalizedCustomerAccountId, command.AssetSymbol.Value, normalizedClientOrderId);
+
+        await using var context = await dbContextFactory.CreateDbContextAsync(cancellationToken);
+        await using var transaction = await context.Database.BeginTransactionAsync(cancellationToken);
+
+        var existingCompensation = await context.CryptoLedgerTransactions
+            .AsNoTracking()
+            .SingleOrDefaultAsync(candidate =>
+                candidate.OperationType == CryptoLedgerOperationTypes.BrokeredCryptoBuyCompensation
+                && candidate.OperationId == operationId,
+                cancellationToken);
+        if (existingCompensation is not null)
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            return;
+        }
+
+        var execution = await context.BrokeredCryptoBuyExecutions
+            .SingleOrDefaultAsync(candidate =>
+                candidate.CustomerAccountId == normalizedCustomerAccountId
+                && candidate.AssetSymbol == command.AssetSymbol.Value
+                && candidate.ClientOrderId == normalizedClientOrderId,
+                cancellationToken)
+            ?? throw new InvalidOperationException(
+                $"Brokered crypto buy '{normalizedClientOrderId}' for customer '{normalizedCustomerAccountId}' and asset '{command.AssetSymbol.Value}' was not found.");
+
+        var now = timeProvider.GetUtcNow();
+        await DecreaseCustomerOwnershipAsync(
+            context,
+            normalizedCustomerAccountId,
+            command.AssetSymbol.Value,
+            execution.Quantity,
+            now,
+            cancellationToken);
+        await UpsertPlatformInventoryAsync(
+            context,
+            command.AssetSymbol.Value,
+            execution.InternalFillQuantity,
+            now,
+            cancellationToken);
+
+        var ledgerTransactionId = Guid.CreateVersion7();
+        context.CryptoLedgerTransactions.Add(new CryptoLedgerTransactionEntity
+        {
+            Id = ledgerTransactionId,
+            OperationType = CryptoLedgerOperationTypes.BrokeredCryptoBuyCompensation,
+            OperationId = operationId,
+            ExecutedAtUtc = command.CompensatedAtUtc,
+            CreatedAtUtc = now
+        });
+
+        var entries = new List<CryptoLedgerEntryEntity>(capacity: 3)
+        {
+            new()
+            {
+                Id = Guid.CreateVersion7(),
+                TransactionId = ledgerTransactionId,
+                Sequence = 1,
+                AssetSymbol = command.AssetSymbol.Value,
+                AccountKind = CryptoLedgerAccountKinds.CustomerOwnership,
+                AccountId = normalizedCustomerAccountId,
+                Direction = CryptoLedgerEntryDirection.Credit,
+                Quantity = execution.Quantity,
+                CreatedAtUtc = now
+            }
+        };
+
+        var sequence = 2;
+        if (execution.InternalFillQuantity > 0m)
+        {
+            entries.Add(new CryptoLedgerEntryEntity
+            {
+                Id = Guid.CreateVersion7(),
+                TransactionId = ledgerTransactionId,
+                Sequence = sequence++,
+                AssetSymbol = command.AssetSymbol.Value,
+                AccountKind = CryptoLedgerAccountKinds.PlatformInventory,
+                AccountId = null,
+                Direction = CryptoLedgerEntryDirection.Debit,
+                Quantity = execution.InternalFillQuantity,
+                CreatedAtUtc = now
+            });
+        }
+
+        if (execution.ExternalHedgeQuantity > 0m)
+        {
+            entries.Add(new CryptoLedgerEntryEntity
+            {
+                Id = Guid.CreateVersion7(),
+                TransactionId = ledgerTransactionId,
+                Sequence = sequence,
+                AssetSymbol = command.AssetSymbol.Value,
+                AccountKind = CryptoLedgerAccountKinds.PlatformExternalHedgePending,
+                AccountId = null,
+                Direction = CryptoLedgerEntryDirection.Debit,
+                Quantity = execution.ExternalHedgeQuantity,
+                CreatedAtUtc = now
+            });
+        }
+
+        context.CryptoLedgerEntries.AddRange(entries);
+
+        try
+        {
+            await context.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+        }
+        catch (DbUpdateException exception) when (UniqueConstraintViolationDetector.IsUniqueConstraintViolation(exception))
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            var duplicateCompensation = await context.CryptoLedgerTransactions
+                .AsNoTracking()
+                .SingleOrDefaultAsync(candidate =>
+                    candidate.OperationType == CryptoLedgerOperationTypes.BrokeredCryptoBuyCompensation
+                    && candidate.OperationId == operationId,
+                    cancellationToken);
+            if (duplicateCompensation is not null)
+            {
+                return;
+            }
+
+            throw;
+        }
+    }
+
     private static string BuildBuyOperationId(string customerAccountId, string assetSymbol, string clientOrderId)
     {
         return $"{customerAccountId}:{assetSymbol}:{clientOrderId}";
@@ -264,6 +399,76 @@ public sealed class EfCoreCryptoOwnershipLedger(
               ON CONFLICT (customer_account_id, asset_symbol)
               DO UPDATE SET
                   quantity = crypto_ownership_positions.quantity + EXCLUDED.quantity,
+                  updated_at_utc = EXCLUDED.updated_at_utc;
+              """,
+            cancellationToken);
+    }
+
+    private static async Task DecreaseCustomerOwnershipAsync(
+        CryptoTransactionsDbContext context,
+        string customerAccountId,
+        string assetSymbol,
+        decimal quantity,
+        DateTimeOffset now,
+        CancellationToken cancellationToken)
+    {
+        var affectedRows = await context.Database.ExecuteSqlInterpolatedAsync(
+            $"""
+              UPDATE crypto_ownership_positions
+              SET quantity = quantity - {quantity},
+                  updated_at_utc = {now}
+              WHERE customer_account_id = {customerAccountId}
+                AND asset_symbol = {assetSymbol}
+                AND quantity >= {quantity};
+              """,
+            cancellationToken);
+        if (affectedRows > 0)
+        {
+            return;
+        }
+
+        var currentQuantity = await context.CryptoOwnershipPositions
+            .AsNoTracking()
+            .Where(candidate => candidate.CustomerAccountId == customerAccountId
+                && candidate.AssetSymbol == assetSymbol)
+            .Select(candidate => candidate.Quantity)
+            .SingleOrDefaultAsync(cancellationToken);
+        throw new InvalidOperationException(
+            $"Brokered buy compensation failed because customer ownership for {assetSymbol} is insufficient. Available: {currentQuantity}, required: {quantity}.");
+    }
+
+    private static async Task UpsertPlatformInventoryAsync(
+        CryptoTransactionsDbContext context,
+        string assetSymbol,
+        decimal quantity,
+        DateTimeOffset now,
+        CancellationToken cancellationToken)
+    {
+        if (quantity <= 0m)
+        {
+            return;
+        }
+
+        var updatedRows = await context.Database.ExecuteSqlInterpolatedAsync(
+            $"""
+              UPDATE platform_inventory_positions
+              SET available_quantity = available_quantity + {quantity},
+                  updated_at_utc = {now}
+              WHERE asset_symbol = {assetSymbol};
+              """,
+            cancellationToken);
+        if (updatedRows > 0)
+        {
+            return;
+        }
+
+        await context.Database.ExecuteSqlInterpolatedAsync(
+            $"""
+              INSERT INTO platform_inventory_positions (asset_symbol, available_quantity, updated_at_utc)
+              VALUES ({assetSymbol}, {quantity}, {now})
+              ON CONFLICT (asset_symbol)
+              DO UPDATE SET
+                  available_quantity = platform_inventory_positions.available_quantity + EXCLUDED.available_quantity,
                   updated_at_utc = EXCLUDED.updated_at_utc;
               """,
             cancellationToken);
@@ -325,6 +530,24 @@ public sealed class EfCoreCryptoOwnershipLedger(
         if (command.TotalCost <= 0m)
         {
             throw new ArgumentOutOfRangeException(nameof(command.TotalCost), command.TotalCost, "TotalCost must be greater than zero.");
+        }
+    }
+
+    private static void Validate(OwnershipLedgerBuyCompensationCommand command)
+    {
+        if (string.IsNullOrWhiteSpace(command.CustomerAccountId))
+        {
+            throw new ArgumentException("CustomerAccountId is required.", nameof(command.CustomerAccountId));
+        }
+
+        if (string.IsNullOrWhiteSpace(command.ClientOrderId))
+        {
+            throw new ArgumentException("ClientOrderId is required.", nameof(command.ClientOrderId));
+        }
+
+        if (string.IsNullOrWhiteSpace(command.CompensationReason))
+        {
+            throw new ArgumentException("CompensationReason is required.", nameof(command.CompensationReason));
         }
     }
 

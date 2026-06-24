@@ -13,4 +13,8 @@ public interface ICryptoOwnershipLedger
     Task<BrokeredCryptoBuyReceipt> RecordCustomerBuyAsync(
         OwnershipLedgerBuyRecordCommand command,
         CancellationToken cancellationToken = default);
+
+    Task CompensateCustomerBuyAsync(
+        OwnershipLedgerBuyCompensationCommand command,
+        CancellationToken cancellationToken = default);
 }

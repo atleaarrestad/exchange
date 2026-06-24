@@ -85,6 +85,27 @@ public sealed record FiatCaptureFailedForBrokeredBuy(
     string FailureReason,
     DateTimeOffset FailedAtUtc);
 
+public sealed record ReverseCryptoBookingForBrokeredBuy(
+    Guid CorrelationId,
+    string ClientOrderId,
+    string CustomerAccountId,
+    string AssetSymbol,
+    string CompensationReason,
+    DateTimeOffset RequestedAtUtc);
+
+public sealed record CryptoBookingReversedForBrokeredBuy(
+    Guid CorrelationId,
+    string ClientOrderId,
+    string CustomerAccountId,
+    DateTimeOffset ReversedAtUtc);
+
+public sealed record CryptoBookingReverseFailedForBrokeredBuy(
+    Guid CorrelationId,
+    string ClientOrderId,
+    string CustomerAccountId,
+    string FailureReason,
+    DateTimeOffset FailedAtUtc);
+
 public sealed record ReleaseFiatReservationForBrokeredBuy(
     Guid CorrelationId,
     string ClientOrderId,

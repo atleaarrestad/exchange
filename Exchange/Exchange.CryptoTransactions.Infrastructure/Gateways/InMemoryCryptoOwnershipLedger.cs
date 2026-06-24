@@ -14,6 +14,7 @@ public sealed class InMemoryCryptoOwnershipLedger(BrokeredTradingOptions options
     };
     private readonly Dictionary<(string CustomerAccountId, AssetSymbol AssetSymbol), decimal> customerHoldings = new();
     private readonly Dictionary<(string CustomerAccountId, AssetSymbol AssetSymbol, string ClientOrderId), BrokeredCryptoBuyReceipt> executedBuys = new();
+    private readonly HashSet<(string CustomerAccountId, AssetSymbol AssetSymbol, string ClientOrderId)> compensatedBuys = [];
 
     public Task<decimal> GetAvailablePlatformInventoryAsync(AssetSymbol assetSymbol, CancellationToken cancellationToken = default)
     {
@@ -102,6 +103,49 @@ public sealed class InMemoryCryptoOwnershipLedger(BrokeredTradingOptions options
                 command.ExternalHedgeOrderId);
             executedBuys[executionKey] = receipt;
             return Task.FromResult(receipt);
+        }
+    }
+
+    public Task CompensateCustomerBuyAsync(
+        OwnershipLedgerBuyCompensationCommand command,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(command);
+        ArgumentException.ThrowIfNullOrWhiteSpace(command.CustomerAccountId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(command.ClientOrderId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(command.CompensationReason);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var customerAccountId = command.CustomerAccountId.Trim();
+        var clientOrderId = command.ClientOrderId.Trim();
+        var executionKey = (customerAccountId, command.AssetSymbol, clientOrderId);
+
+        lock (gate)
+        {
+            if (compensatedBuys.Contains(executionKey))
+            {
+                return Task.CompletedTask;
+            }
+
+            if (!executedBuys.TryGetValue(executionKey, out var execution))
+            {
+                throw new InvalidOperationException(
+                    $"Brokered crypto buy '{clientOrderId}' for customer '{customerAccountId}' and asset '{command.AssetSymbol.Value}' was not found.");
+            }
+
+            var holdingsKey = (customerAccountId, command.AssetSymbol);
+            customerHoldings.TryGetValue(holdingsKey, out var currentHolding);
+            if (currentHolding < execution.Quantity)
+            {
+                throw new InvalidOperationException(
+                    $"Brokered buy compensation failed because customer ownership for {command.AssetSymbol.Value} is insufficient. Available: {currentHolding}, required: {execution.Quantity}.");
+            }
+
+            customerHoldings[holdingsKey] = checked(currentHolding - execution.Quantity);
+            platformInventory.TryGetValue(command.AssetSymbol, out var currentInventory);
+            platformInventory[command.AssetSymbol] = checked(currentInventory + execution.InternalFillQuantity);
+            compensatedBuys.Add(executionKey);
+            return Task.CompletedTask;
         }
     }
 

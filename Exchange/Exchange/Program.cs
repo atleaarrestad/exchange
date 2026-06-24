@@ -54,6 +54,7 @@ builder.Services.AddMassTransit(configurator =>
     configurator.AddConsumer<ReserveFiatForBrokeredBuyConsumer>();
     configurator.AddConsumer<BookCryptoForBrokeredBuyConsumer>();
     configurator.AddConsumer<CaptureFiatForBrokeredBuyConsumer>();
+    configurator.AddConsumer<ReverseCryptoBookingForBrokeredBuyConsumer>();
     configurator.AddConsumer<ReleaseFiatReservationForBrokeredBuyConsumer>();
 
     if (messagingOptions.UseRabbitMq)
@@ -79,6 +80,7 @@ builder.Services.AddMassTransit(configurator =>
             cfg.ReceiveEndpoint("reserve-fiat-for-brokered-buy", endpoint => endpoint.ConfigureConsumer<ReserveFiatForBrokeredBuyConsumer>(context));
             cfg.ReceiveEndpoint("book-crypto-for-brokered-buy", endpoint => endpoint.ConfigureConsumer<BookCryptoForBrokeredBuyConsumer>(context));
             cfg.ReceiveEndpoint("capture-fiat-for-brokered-buy", endpoint => endpoint.ConfigureConsumer<CaptureFiatForBrokeredBuyConsumer>(context));
+            cfg.ReceiveEndpoint("reverse-crypto-booking-for-brokered-buy", endpoint => endpoint.ConfigureConsumer<ReverseCryptoBookingForBrokeredBuyConsumer>(context));
             cfg.ReceiveEndpoint("release-fiat-reservation-for-brokered-buy", endpoint => endpoint.ConfigureConsumer<ReleaseFiatReservationForBrokeredBuyConsumer>(context));
             SettingsFanoutEndpointRegistration.ConfigureFanoutEndpoints(
                 (endpointName, configureEndpoint) => cfg.ReceiveEndpoint(endpointName, configureEndpoint),
@@ -101,6 +103,7 @@ builder.Services.AddMassTransit(configurator =>
         cfg.ReceiveEndpoint("reserve-fiat-for-brokered-buy", endpoint => endpoint.ConfigureConsumer<ReserveFiatForBrokeredBuyConsumer>(context));
         cfg.ReceiveEndpoint("book-crypto-for-brokered-buy", endpoint => endpoint.ConfigureConsumer<BookCryptoForBrokeredBuyConsumer>(context));
         cfg.ReceiveEndpoint("capture-fiat-for-brokered-buy", endpoint => endpoint.ConfigureConsumer<CaptureFiatForBrokeredBuyConsumer>(context));
+        cfg.ReceiveEndpoint("reverse-crypto-booking-for-brokered-buy", endpoint => endpoint.ConfigureConsumer<ReverseCryptoBookingForBrokeredBuyConsumer>(context));
         cfg.ReceiveEndpoint("release-fiat-reservation-for-brokered-buy", endpoint => endpoint.ConfigureConsumer<ReleaseFiatReservationForBrokeredBuyConsumer>(context));
         SettingsFanoutEndpointRegistration.ConfigureFanoutEndpoints(
             (endpointName, configureEndpoint) => cfg.ReceiveEndpoint(endpointName, configureEndpoint),
