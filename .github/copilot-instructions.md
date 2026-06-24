@@ -146,6 +146,14 @@ Treat correctness, auditability, and safety as mandatory.
    - use typed aliases and lint boundary rules to prevent coupling
 6. Keep financial rules and amount handling in shared typed libraries so both clients apply the same validated behavior.
 
+## Frontend API Communication Layer
+
+1. Keep server communication in a shared frontend API client layer so administration and user clients reuse the same communication behavior.
+2. Centralize request concerns in the shared API layer (timeouts, retries, error mapping, correlation IDs, and transport defaults) instead of duplicating per feature.
+3. Keep logging extensible through pluggable hooks/providers at the API boundary so request/response logging and observability can be added or expanded later without refactoring feature code.
+4. Keep authentication optional in local/testing mode for now, but design the shared API client to be auth-ready via injectable token providers/hooks so auth can be enabled later with minimal changes.
+5. Feature services should depend on the shared API abstraction rather than direct raw HTTP calls to keep upgrade paths (auth, logging, tracing) consistent across clients.
+
 ## Financial Safety Requirements
 
 1. Never use floating-point types (`float`, `double`) for money/amount calculations; use `decimal`.
