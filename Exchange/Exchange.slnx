@@ -5,6 +5,7 @@
   <Project Path="Exchange.CryptoTransactions.Infrastructure/Exchange.CryptoTransactions.Infrastructure.csproj" />
   <Project Path="Exchange.Infrastructure/Exchange.Infrastructure.csproj" />
   <Project Path="Exchange/Exchange.csproj" />
+  <Project Path="Exchange.Worker/Exchange.Worker.csproj" />
   <Project Path="../Frontend/broker-admin/broker-admin.esproj" />
   <Project Path="../Frontend/broker-web/broker-web.esproj" />
   <Project Path="Tests/Tests.csproj" />

@@ -14,6 +14,8 @@ public sealed class SettingsChangeOutboxPublisherWorker(
     ILogger<SettingsChangeOutboxPublisherWorker> logger) : BackgroundService
 {
     private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(2);
+    private static readonly TimeSpan LeaseDuration = TimeSpan.FromSeconds(30);
+    private readonly string workerId = $"{Environment.MachineName.ToLowerInvariant()}-{Environment.ProcessId}-{Guid.CreateVersion7()}";
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -38,11 +40,7 @@ public sealed class SettingsChangeOutboxPublisherWorker(
     private async Task PublishPendingEntriesAsync(CancellationToken cancellationToken)
     {
         await using var context = await dbContextFactory.CreateDbContextAsync(cancellationToken);
-        var pendingEntries = await context.SettingsChangeOutboxEntries
-            .Where(entry => entry.PublishedAtUtc == null)
-            .OrderBy(entry => entry.CreatedAtUtc)
-            .Take(100)
-            .ToListAsync(cancellationToken);
+        var pendingEntries = await ClaimPendingEntriesAsync(context, cancellationToken);
 
         if (pendingEntries.Count == 0)
         {
@@ -56,6 +54,9 @@ public sealed class SettingsChangeOutboxPublisherWorker(
             {
                 await PublishEntryAsync(entry, cancellationToken);
                 entry.PublishedAtUtc = DateTimeOffset.UtcNow;
+                entry.LeaseOwnerId = null;
+                entry.LeaseExpiresAtUtc = null;
+                entry.LeaseToken = null;
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
@@ -64,15 +65,57 @@ public sealed class SettingsChangeOutboxPublisherWorker(
             catch (Exception exception)
             {
                 entry.PublishAttemptCount = checked(entry.PublishAttemptCount + 1);
+                entry.LeaseOwnerId = null;
+                entry.LeaseExpiresAtUtc = null;
+                entry.LeaseToken = null;
                 logger.LogError(
                     exception,
                     "Failed publishing settings outbox entry {OutboxEntryId} of type {MessageType}.",
                     entry.Id,
                     entry.MessageType);
             }
+
+            await context.SaveChangesAsync(cancellationToken);
+        }
+    }
+
+    private async Task<List<SettingsChangeOutboxEntryEntity>> ClaimPendingEntriesAsync(
+        CryptoTransactionsDbContext context,
+        CancellationToken cancellationToken)
+    {
+        var now = DateTimeOffset.UtcNow;
+        var leaseExpiresAtUtc = now.Add(LeaseDuration);
+        var leaseToken = Guid.CreateVersion7();
+
+        var candidateIds = await context.SettingsChangeOutboxEntries
+            .AsNoTracking()
+            .Where(entry => entry.PublishedAtUtc == null
+                && (entry.LeaseExpiresAtUtc == null || entry.LeaseExpiresAtUtc < now))
+            .OrderBy(entry => entry.CreatedAtUtc)
+            .Take(100)
+            .Select(entry => entry.Id)
+            .ToArrayAsync(cancellationToken);
+
+        if (candidateIds.Length == 0)
+        {
+            return [];
         }
 
-        await context.SaveChangesAsync(cancellationToken);
+        await context.SettingsChangeOutboxEntries
+            .Where(entry => candidateIds.Contains(entry.Id)
+                && entry.PublishedAtUtc == null
+                && (entry.LeaseExpiresAtUtc == null || entry.LeaseExpiresAtUtc < now))
+            .ExecuteUpdateAsync(
+                setters => setters
+                    .SetProperty(entry => entry.LeaseOwnerId, workerId)
+                    .SetProperty(entry => entry.LeaseExpiresAtUtc, leaseExpiresAtUtc)
+                    .SetProperty(entry => entry.LeaseToken, leaseToken),
+                cancellationToken);
+
+        return await context.SettingsChangeOutboxEntries
+            .Where(entry => entry.PublishedAtUtc == null && entry.LeaseToken == leaseToken)
+            .OrderBy(entry => entry.CreatedAtUtc)
+            .ToListAsync(cancellationToken);
     }
 
     private async Task PublishEntryAsync(SettingsChangeOutboxEntryEntity entry, CancellationToken cancellationToken)

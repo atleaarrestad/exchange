@@ -247,6 +247,19 @@ namespace Exchange.CryptoTransactions.Infrastructure.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at_utc");
 
+                    b.Property<DateTimeOffset?>("LeaseExpiresAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("lease_expires_at_utc");
+
+                    b.Property<string>("LeaseOwnerId")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)")
+                        .HasColumnName("lease_owner_id");
+
+                    b.Property<Guid?>("LeaseToken")
+                        .HasColumnType("uuid")
+                        .HasColumnName("lease_token");
+
                     b.Property<string>("MessageType")
                         .IsRequired()
                         .HasMaxLength(200)
@@ -270,6 +283,9 @@ namespace Exchange.CryptoTransactions.Infrastructure.Migrations
 
                     b.HasIndex("PublishedAtUtc", "CreatedAtUtc")
                         .HasDatabaseName("ix_settings_change_outbox_entries_publish_state");
+
+                    b.HasIndex("PublishedAtUtc", "LeaseExpiresAtUtc", "CreatedAtUtc")
+                        .HasDatabaseName("ix_settings_change_outbox_entries_lease_state");
 
                     b.ToTable("settings_change_outbox_entries", (string)null);
                 });

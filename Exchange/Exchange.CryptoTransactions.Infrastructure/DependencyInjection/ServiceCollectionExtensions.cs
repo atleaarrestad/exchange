@@ -12,7 +12,10 @@ namespace Exchange.CryptoTransactions.Infrastructure.DependencyInjection;
 
 public static class ServiceCollectionExtensions
 {
-    public static IServiceCollection AddCryptoTransactionsInfrastructure(this IServiceCollection services, IConfiguration configuration)
+    public static IServiceCollection AddCryptoTransactionsInfrastructure(
+        this IServiceCollection services,
+        IConfiguration configuration,
+        bool includeHostedServices = true)
     {
         ArgumentNullException.ThrowIfNull(configuration);
 
@@ -61,10 +64,13 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IExternalLiquidityHedgingGateway, UnconfiguredExternalLiquidityHedgingGateway>();
         services.AddSingleton<ICryptoTransferFundsReservationGateway, UnconfiguredCryptoTransferFundsReservationGateway>();
         services.AddSingleton<IBlockchainTransferGateway, RuntimeKrakenBlockchainTransferGateway>();
-        services.AddHostedService<CryptoTransferTimeoutReconciliationWorker>();
-        services.AddHostedService<ExternalHedgeBatchExecutionWorker>();
-        services.AddHostedService<SettingsChangeOutboxPublisherWorker>();
-        services.AddHostedService<RuntimeSettingsBootstrapWorker>();
+        if (includeHostedServices)
+        {
+            services.AddHostedService<CryptoTransferTimeoutReconciliationWorker>();
+            services.AddHostedService<ExternalHedgeBatchExecutionWorker>();
+            services.AddHostedService<SettingsChangeOutboxPublisherWorker>();
+            services.AddHostedService<RuntimeSettingsBootstrapWorker>();
+        }
         return services;
     }
 }

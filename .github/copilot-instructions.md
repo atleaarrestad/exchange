@@ -91,28 +91,36 @@ Treat correctness, auditability, and safety as mandatory.
 
 1. Start as a **modular monolith** (single Web API codebase) with strict bounded-context boundaries.
 2. The Web API must be stateless so multiple instances can be scaled horizontally behind a load balancer.
-3. Prefer asynchronous workflows for non-immediate operations, but avoid premature distributed complexity.
-4. Design for messaging from day one without requiring a broker on day one:
+3. Deployment topology should separate concerns:
+   - run multiple stateless Web API instances for synchronous HTTP request/response paths
+   - run separate worker service instances for asynchronous/background processing
+   - keep API and worker independently scalable
+4. Load balancer behavior is expected and acceptable:
+   - any healthy API instance may answer a `GET` request
+   - correctness must come from shared state and deterministic read/write flows, not instance affinity
+5. Prefer asynchronous workflows for non-immediate operations, but avoid premature distributed complexity.
+6. Design for messaging from day one:
    - define domain/integration events at boundaries
    - enforce idempotency keys for externally triggered operations
    - use retry policies and dead-letter style handling patterns
    - implement the Outbox pattern for reliable event publication
-5. Prioritize financial correctness under concurrency before throughput:
+7. Prioritize financial correctness under concurrency before throughput:
    - deterministic transaction workflows
    - strict ledger consistency and reconciliation
    - exactly-once effect semantics via idempotent processing
-6. Introduce external messaging infrastructure (for example MassTransit + broker) only when load/SLA/operational evidence justifies it, then migrate high-volume paths first (order execution, market ingestion, settlement).
+8. Introduce external messaging infrastructure (MassTransit + broker) with high-volume paths first (order execution, market ingestion, settlement), and keep contracts/consumers broker-ready from day one.
 
 ## MassTransit Adoption Guidance
 
 1. It is acceptable to adopt **MassTransit now** to reduce future transition cost.
-2. In local/dev/simulation environments, prefer **in-memory transport** for fast setup.
-3. Keep message contracts, consumers, idempotency behavior, retry policies, and error handling production-oriented even when transport is in-memory.
-4. Treat in-memory transport as non-durable and single-process:
+2. In this repository, the message bus means **RabbitMQ** as the default brokered transport.
+3. In-memory transport is acceptable only for focused local/testing scenarios where non-durable, single-process behavior is explicitly acceptable.
+4. Keep message contracts, consumers, idempotency behavior, retry policies, and error handling production-oriented even when transport is in-memory.
+5. Treat in-memory transport as non-durable and single-process:
    - no durability guarantees
    - no true cross-instance distribution
    - behavior may differ from real broker failure modes
-5. Keep transport configuration environment-driven so production can switch to a real broker (for example RabbitMQ or Azure Service Bus) without rewriting domain/application logic.
+6. Keep transport configuration environment-driven so the broker can be swapped (for example to Azure Service Bus) without rewriting domain/application logic.
 
 ## Resilience Policy Guidance (Polly)
 

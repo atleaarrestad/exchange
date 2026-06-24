@@ -13,7 +13,7 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddControllers();
 builder.Services.AddProblemDetails();
 builder.Services.AddInfrastructureCaching();
-builder.Services.AddCryptoTransactionsInfrastructure(builder.Configuration);
+builder.Services.AddCryptoTransactionsInfrastructure(builder.Configuration, includeHostedServices: false);
 var messagingOptions = MessagingTransportOptions.FromConfiguration(builder.Configuration);
 
 var isSimulationEnabled = builder.Configuration.GetSection(ConfigurationKeys.SimulationSection)
@@ -42,14 +42,24 @@ builder.Services.AddMassTransit(configurator =>
                     host.Username(messagingOptions.RabbitMq.Username);
                     host.Password(messagingOptions.RabbitMq.Password);
                 });
-            cfg.ConfigureEndpoints(context);
+            cfg.ReceiveEndpoint(
+                BuildFanoutEndpointName(SettingsChangeOutboxMessageTypes.CryptoSettingsProfileChanged, messagingOptions.InstanceId),
+                endpoint => endpoint.ConfigureConsumer<CryptoSettingsProfileChangedConsumer>(context));
+            cfg.ReceiveEndpoint(
+                BuildFanoutEndpointName(SettingsChangeOutboxMessageTypes.CryptoGatewaySettingsProfileChanged, messagingOptions.InstanceId),
+                endpoint => endpoint.ConfigureConsumer<CryptoGatewaySettingsProfileChangedConsumer>(context));
         });
         return;
     }
 
     configurator.UsingInMemory((context, cfg) =>
     {
-        cfg.ConfigureEndpoints(context);
+        cfg.ReceiveEndpoint(
+            BuildFanoutEndpointName(SettingsChangeOutboxMessageTypes.CryptoSettingsProfileChanged, messagingOptions.InstanceId),
+            endpoint => endpoint.ConfigureConsumer<CryptoSettingsProfileChangedConsumer>(context));
+        cfg.ReceiveEndpoint(
+            BuildFanoutEndpointName(SettingsChangeOutboxMessageTypes.CryptoGatewaySettingsProfileChanged, messagingOptions.InstanceId),
+            endpoint => endpoint.ConfigureConsumer<CryptoGatewaySettingsProfileChangedConsumer>(context));
     });
 });
 // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
@@ -71,3 +81,8 @@ app.UseAuthorization();
 app.MapControllers();
 
 app.Run();
+
+static string BuildFanoutEndpointName(string messageTopic, string instanceId)
+{
+    return $"{messageTopic}-subscriber-{instanceId}";
+}

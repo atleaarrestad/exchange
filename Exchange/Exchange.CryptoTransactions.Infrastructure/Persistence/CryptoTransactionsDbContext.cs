@@ -114,8 +114,13 @@ public sealed class CryptoTransactionsDbContext(DbContextOptions<CryptoTransacti
         outboxEntries.Property(entity => entity.CreatedAtUtc).HasColumnName("created_at_utc");
         outboxEntries.Property(entity => entity.PublishedAtUtc).HasColumnName("published_at_utc");
         outboxEntries.Property(entity => entity.PublishAttemptCount).HasColumnName("publish_attempt_count");
+        outboxEntries.Property(entity => entity.LeaseOwnerId).HasColumnName("lease_owner_id").HasMaxLength(128);
+        outboxEntries.Property(entity => entity.LeaseExpiresAtUtc).HasColumnName("lease_expires_at_utc");
+        outboxEntries.Property(entity => entity.LeaseToken).HasColumnName("lease_token");
 
         outboxEntries.HasIndex(entity => new { entity.PublishedAtUtc, entity.CreatedAtUtc })
             .HasDatabaseName("ix_settings_change_outbox_entries_publish_state");
+        outboxEntries.HasIndex(entity => new { entity.PublishedAtUtc, entity.LeaseExpiresAtUtc, entity.CreatedAtUtc })
+            .HasDatabaseName("ix_settings_change_outbox_entries_lease_state");
     }
 }

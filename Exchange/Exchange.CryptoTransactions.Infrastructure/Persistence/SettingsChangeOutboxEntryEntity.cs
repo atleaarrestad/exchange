@@ -8,4 +8,7 @@ public sealed class SettingsChangeOutboxEntryEntity
     public DateTimeOffset CreatedAtUtc { get; set; }
     public DateTimeOffset? PublishedAtUtc { get; set; }
     public int PublishAttemptCount { get; set; }
+    public string? LeaseOwnerId { get; set; }
+    public DateTimeOffset? LeaseExpiresAtUtc { get; set; }
+    public Guid? LeaseToken { get; set; }
 }
