@@ -8,6 +8,8 @@ public sealed record BlockchainGatewayResilienceOptions
 {
     public const bool DefaultEnabled = true;
     public const int DefaultOperationTimeoutSeconds = 20;
+    public const int DefaultRetryCount = 0;
+    public const int DefaultRetryDelayMilliseconds = 2000;
     public const double DefaultFailureRatio = 0.5;
     public const int DefaultMinimumThroughput = 20;
     public const int DefaultSamplingDurationSeconds = 30;
@@ -17,6 +19,8 @@ public sealed record BlockchainGatewayResilienceOptions
 
     public bool Enabled { get; init; } = DefaultEnabled;
     public int OperationTimeoutSeconds { get; init; } = DefaultOperationTimeoutSeconds;
+    public int RetryCount { get; init; } = DefaultRetryCount;
+    public int RetryDelayMilliseconds { get; init; } = DefaultRetryDelayMilliseconds;
     public double FailureRatio { get; init; } = DefaultFailureRatio;
     public int MinimumThroughput { get; init; } = DefaultMinimumThroughput;
     public int SamplingDurationSeconds { get; init; } = DefaultSamplingDurationSeconds;
@@ -25,6 +29,7 @@ public sealed record BlockchainGatewayResilienceOptions
     public int MaxQueueingActions { get; init; } = DefaultMaxQueueingActions;
 
     public TimeSpan OperationTimeout => TimeSpan.FromSeconds(OperationTimeoutSeconds);
+    public TimeSpan RetryDelay => TimeSpan.FromMilliseconds(RetryDelayMilliseconds);
     public TimeSpan SamplingDuration => TimeSpan.FromSeconds(SamplingDurationSeconds);
     public TimeSpan BreakDuration => TimeSpan.FromSeconds(BreakDurationSeconds);
 
@@ -35,6 +40,8 @@ public sealed record BlockchainGatewayResilienceOptions
         {
             Enabled = Enabled,
             OperationTimeout = OperationTimeout,
+            RetryCount = RetryCount,
+            RetryDelay = RetryDelay,
             FailureRatio = FailureRatio,
             MinimumThroughput = MinimumThroughput,
             SamplingDuration = SamplingDuration,
@@ -55,6 +62,8 @@ public sealed record BlockchainGatewayResilienceOptions
         {
             Enabled = section.GetValue<bool?>(nameof(Enabled)) ?? DefaultEnabled,
             OperationTimeoutSeconds = section.GetValue<int?>(nameof(OperationTimeoutSeconds)) ?? DefaultOperationTimeoutSeconds,
+            RetryCount = section.GetValue<int?>(nameof(RetryCount)) ?? DefaultRetryCount,
+            RetryDelayMilliseconds = section.GetValue<int?>(nameof(RetryDelayMilliseconds)) ?? DefaultRetryDelayMilliseconds,
             FailureRatio = section.GetValue<double?>(nameof(FailureRatio)) ?? DefaultFailureRatio,
             MinimumThroughput = section.GetValue<int?>(nameof(MinimumThroughput)) ?? DefaultMinimumThroughput,
             SamplingDurationSeconds = section.GetValue<int?>(nameof(SamplingDurationSeconds)) ?? DefaultSamplingDurationSeconds,
@@ -77,6 +86,16 @@ public sealed record BlockchainGatewayResilienceOptions
         if (options.FailureRatio <= 0d || options.FailureRatio >= 1d)
         {
             throw new ArgumentOutOfRangeException(nameof(options.FailureRatio), options.FailureRatio, "FailureRatio must be greater than 0 and less than 1.");
+        }
+
+        if (options.RetryCount < 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(options.RetryCount), options.RetryCount, "RetryCount cannot be negative.");
+        }
+
+        if (options.RetryDelayMilliseconds < 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(options.RetryDelayMilliseconds), options.RetryDelayMilliseconds, "RetryDelayMilliseconds cannot be negative.");
         }
 
         if (options.MinimumThroughput <= 1)

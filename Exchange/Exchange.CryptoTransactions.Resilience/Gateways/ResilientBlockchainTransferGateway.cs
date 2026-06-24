@@ -5,6 +5,7 @@ using Polly;
 using Polly.Bulkhead;
 using Polly.Timeout;
 using Polly.Wrap;
+using Polly.Retry;
 
 namespace Exchange.CryptoTransactions.Resilience.Gateways;
 
@@ -53,6 +54,8 @@ public sealed class ResilientBlockchainTransferGateway(
             TimeoutStrategy.Pessimistic,
             static (context, timeout, _, _) => Task.CompletedTask);
 
+        var retryPolicy = CreateRetryPolicy<T>(options, logger);
+
         var circuitBreakerPolicy = Policy<T>
             .Handle<TimeoutRejectedException>()
             .Or<HttpRequestException>()
@@ -89,6 +92,30 @@ public sealed class ResilientBlockchainTransferGateway(
                 return Task.CompletedTask;
             });
 
-        return Policy.WrapAsync(bulkheadPolicy, circuitBreakerPolicy, timeoutPolicy);
+        return Policy.WrapAsync(bulkheadPolicy, circuitBreakerPolicy, retryPolicy, timeoutPolicy);
+    }
+
+    private static AsyncRetryPolicy<T> CreateRetryPolicy<T>(
+        BlockchainGatewayResiliencePolicyOptions options,
+        ILogger logger)
+    {
+        return Policy<T>
+            .Handle<TimeoutRejectedException>()
+            .Or<HttpRequestException>()
+            .Or<TimeoutException>()
+            .Or<IOException>()
+            .Or<BlockchainTransferRejectedException>(exception => exception.IsTransient)
+            .WaitAndRetryAsync(
+                retryCount: options.RetryCount,
+                sleepDurationProvider: _ => options.RetryDelay,
+                onRetryAsync: (outcome, delay, attempt, _) =>
+                {
+                    logger.LogWarning(
+                        outcome.Exception,
+                        "Retrying blockchain gateway operation (attempt {RetryAttempt}) after {RetryDelayMs} ms.",
+                        attempt,
+                        delay.TotalMilliseconds);
+                    return Task.CompletedTask;
+                });
     }
 }

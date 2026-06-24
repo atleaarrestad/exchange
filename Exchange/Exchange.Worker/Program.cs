@@ -32,6 +32,7 @@ builder.Services.AddMassTransit(configurator =>
     configurator.SetKebabCaseEndpointNameFormatter();
     configurator.AddConsumer<CryptoSettingsProfileChangedConsumer>();
     configurator.AddConsumer<CryptoGatewaySettingsProfileChangedConsumer>();
+    configurator.AddConsumer<CryptoGatewayResilienceSettingsProfileChangedConsumer>();
     configurator.AddConsumer<CryptoTransferSubmissionRequestedConsumer>();
 
     if (useRabbitMq)
@@ -67,6 +68,9 @@ builder.Services.AddMassTransit(configurator =>
             cfg.ReceiveEndpoint(
                 BuildFanoutEndpointName(SettingsChangeOutboxMessageTypes.CryptoGatewaySettingsProfileChanged, instanceId),
                 endpoint => endpoint.ConfigureConsumer<CryptoGatewaySettingsProfileChangedConsumer>(context));
+            cfg.ReceiveEndpoint(
+                BuildFanoutEndpointName(SettingsChangeOutboxMessageTypes.CryptoGatewayResilienceSettingsProfileChanged, instanceId),
+                endpoint => endpoint.ConfigureConsumer<CryptoGatewayResilienceSettingsProfileChangedConsumer>(context));
         });
         return;
     }
@@ -93,6 +97,9 @@ builder.Services.AddMassTransit(configurator =>
         cfg.ReceiveEndpoint(
             BuildFanoutEndpointName(SettingsChangeOutboxMessageTypes.CryptoGatewaySettingsProfileChanged, instanceId),
             endpoint => endpoint.ConfigureConsumer<CryptoGatewaySettingsProfileChangedConsumer>(context));
+        cfg.ReceiveEndpoint(
+            BuildFanoutEndpointName(SettingsChangeOutboxMessageTypes.CryptoGatewayResilienceSettingsProfileChanged, instanceId),
+            endpoint => endpoint.ConfigureConsumer<CryptoGatewayResilienceSettingsProfileChangedConsumer>(context));
     });
 });
 

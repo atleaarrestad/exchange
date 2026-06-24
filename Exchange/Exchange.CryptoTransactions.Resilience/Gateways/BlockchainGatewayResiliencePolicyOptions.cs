@@ -4,6 +4,8 @@ public sealed record BlockchainGatewayResiliencePolicyOptions
 {
     public bool Enabled { get; init; } = true;
     public TimeSpan OperationTimeout { get; init; } = TimeSpan.FromSeconds(20);
+    public int RetryCount { get; init; }
+    public TimeSpan RetryDelay { get; init; } = TimeSpan.FromSeconds(2);
     public double FailureRatio { get; init; } = 0.5;
     public int MinimumThroughput { get; init; } = 20;
     public TimeSpan SamplingDuration { get; init; } = TimeSpan.FromSeconds(30);
@@ -23,6 +25,16 @@ public sealed record BlockchainGatewayResiliencePolicyOptions
         if (options.FailureRatio <= 0d || options.FailureRatio >= 1d)
         {
             throw new ArgumentOutOfRangeException(nameof(options.FailureRatio), options.FailureRatio, "FailureRatio must be greater than 0 and less than 1.");
+        }
+
+        if (options.RetryCount < 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(options.RetryCount), options.RetryCount, "RetryCount cannot be negative.");
+        }
+
+        if (options.RetryDelay < TimeSpan.Zero)
+        {
+            throw new ArgumentOutOfRangeException(nameof(options.RetryDelay), options.RetryDelay, "RetryDelay cannot be negative.");
         }
 
         if (options.MinimumThroughput <= 1)

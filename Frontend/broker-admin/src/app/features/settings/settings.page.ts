@@ -8,6 +8,13 @@ import { MatInputModule } from '@angular/material/input';
 import { MatSelectChange, MatSelectModule } from '@angular/material/select';
 import { MatTabsModule } from '@angular/material/tabs';
 import {
+  CryptoGatewayResilienceSettingsProfile,
+  DEFAULT_CRYPTO_GATEWAY_RESILIENCE_SETTINGS_REQUEST,
+  UpsertCryptoGatewayResilienceSettingsRequest,
+  toUpsertResilienceRequest
+} from './crypto-gateway-resilience-settings.models';
+import { CryptoGatewayResilienceSettingsService } from './crypto-gateway-resilience-settings.service';
+import {
   CryptoGatewaySettingsProfile,
   DEFAULT_CRYPTO_GATEWAY_SETTINGS_REQUEST,
   GATEWAY_PROVIDER,
@@ -43,6 +50,7 @@ import { CryptoSettingsService } from './crypto-settings.service';
 export class SettingsPageComponent implements OnInit {
   private readonly cryptoSettingsService = inject(CryptoSettingsService);
   private readonly gatewaySettingsService = inject(CryptoGatewaySettingsService);
+  private readonly gatewayResilienceSettingsService = inject(CryptoGatewayResilienceSettingsService);
 
   protected readonly gatewayProviders = Object.values(GATEWAY_PROVIDER);
 
@@ -66,8 +74,17 @@ export class SettingsPageComponent implements OnInit {
   protected gatewaySuccessMessage: string | null = null;
   protected gatewayCredentialsDraft: SaveCryptoGatewayCredentialsRequest = { apiKey: '', apiSecret: '' };
 
+  protected resilienceProfiles: readonly CryptoGatewayResilienceSettingsProfile[] = [];
+  protected selectedResilienceProfileId: string | null = null;
+  protected resilienceDraft: UpsertCryptoGatewayResilienceSettingsRequest = cloneDefaultResilienceRequest();
+  protected isResilienceLoading = false;
+  protected isResilienceSaving = false;
+  protected isResilienceDeleting = false;
+  protected resilienceErrorMessage: string | null = null;
+  protected resilienceSuccessMessage: string | null = null;
+
   async ngOnInit(): Promise<void> {
-    await Promise.all([this.refreshCoreProfiles(), this.refreshGatewayProfiles()]);
+    await Promise.all([this.refreshCoreProfiles(), this.refreshGatewayProfiles(), this.refreshResilienceProfiles()]);
   }
 
   protected async refreshCoreProfiles(preferredProfileId?: string | null): Promise<void> {
@@ -128,6 +145,10 @@ export class SettingsPageComponent implements OnInit {
     this.selectGatewayProfile(String(event.value));
   }
 
+  protected onResilienceProfileChanged(event: MatSelectChange): void {
+    this.selectResilienceProfile(String(event.value));
+  }
+
   protected selectCoreProfile(id: string): void {
     const selected = this.coreProfiles.find((profile) => profile.id === id);
     if (selected === undefined) {
@@ -153,6 +174,18 @@ export class SettingsPageComponent implements OnInit {
     this.gatewaySuccessMessage = null;
   }
 
+  protected selectResilienceProfile(id: string): void {
+    const selected = this.resilienceProfiles.find((profile) => profile.id === id);
+    if (selected === undefined) {
+      return;
+    }
+
+    this.selectedResilienceProfileId = selected.id;
+    this.resilienceDraft = toUpsertResilienceRequest(selected);
+    this.resilienceErrorMessage = null;
+    this.resilienceSuccessMessage = null;
+  }
+
   protected beginCoreCreateMode(): void {
     this.selectedCoreProfileId = null;
     this.coreDraft = cloneDefaultCoreRequest();
@@ -166,6 +199,13 @@ export class SettingsPageComponent implements OnInit {
     this.gatewayCredentialsDraft = { apiKey: '', apiSecret: '' };
     this.gatewayErrorMessage = null;
     this.gatewaySuccessMessage = null;
+  }
+
+  protected beginResilienceCreateMode(): void {
+    this.selectedResilienceProfileId = null;
+    this.resilienceDraft = cloneDefaultResilienceRequest();
+    this.resilienceErrorMessage = null;
+    this.resilienceSuccessMessage = null;
   }
 
   protected async createCoreProfile(): Promise<void> {
@@ -197,6 +237,22 @@ export class SettingsPageComponent implements OnInit {
       this.gatewayErrorMessage = getErrorMessage(error);
     } finally {
       this.isGatewaySaving = false;
+    }
+  }
+
+  protected async createResilienceProfile(): Promise<void> {
+    this.isResilienceSaving = true;
+    this.resilienceErrorMessage = null;
+    this.resilienceSuccessMessage = null;
+
+    try {
+      const created = await this.gatewayResilienceSettingsService.createProfile(this.resilienceDraft);
+      await this.refreshResilienceProfiles(created.id);
+      this.resilienceSuccessMessage = `Created resilience profile "${created.name}".`;
+    } catch (error) {
+      this.resilienceErrorMessage = getErrorMessage(error);
+    } finally {
+      this.isResilienceSaving = false;
     }
   }
 
@@ -239,6 +295,27 @@ export class SettingsPageComponent implements OnInit {
       this.gatewayErrorMessage = getErrorMessage(error);
     } finally {
       this.isGatewaySaving = false;
+    }
+  }
+
+  protected async updateSelectedResilienceProfile(): Promise<void> {
+    if (this.selectedResilienceProfileId === null) {
+      this.resilienceErrorMessage = 'Select a resilience profile before updating.';
+      return;
+    }
+
+    this.isResilienceSaving = true;
+    this.resilienceErrorMessage = null;
+    this.resilienceSuccessMessage = null;
+
+    try {
+      const updated = await this.gatewayResilienceSettingsService.updateProfile(this.selectedResilienceProfileId, this.resilienceDraft);
+      await this.refreshResilienceProfiles(updated.id);
+      this.resilienceSuccessMessage = `Updated resilience profile "${updated.name}".`;
+    } catch (error) {
+      this.resilienceErrorMessage = getErrorMessage(error);
+    } finally {
+      this.isResilienceSaving = false;
     }
   }
 
@@ -304,6 +381,52 @@ export class SettingsPageComponent implements OnInit {
       this.isGatewayDeleting = false;
     }
   }
+
+  protected async deleteSelectedResilienceProfile(): Promise<void> {
+    if (this.selectedResilienceProfileId === null) {
+      this.resilienceErrorMessage = 'Select a resilience profile before deleting.';
+      return;
+    }
+
+    this.isResilienceDeleting = true;
+    this.resilienceErrorMessage = null;
+    this.resilienceSuccessMessage = null;
+
+    try {
+      await this.gatewayResilienceSettingsService.deleteProfile(this.selectedResilienceProfileId);
+      await this.refreshResilienceProfiles();
+      this.resilienceSuccessMessage = 'Deleted selected resilience profile.';
+    } catch (error) {
+      this.resilienceErrorMessage = getErrorMessage(error);
+    } finally {
+      this.isResilienceDeleting = false;
+    }
+  }
+
+  protected async refreshResilienceProfiles(preferredProfileId?: string | null): Promise<void> {
+    this.isResilienceLoading = true;
+    this.resilienceErrorMessage = null;
+
+    try {
+      const profiles = await this.gatewayResilienceSettingsService.listProfiles();
+      this.resilienceProfiles = profiles;
+
+      if (profiles.length === 0) {
+        this.selectedResilienceProfileId = null;
+        this.resilienceDraft = cloneDefaultResilienceRequest();
+        return;
+      }
+
+      const selected = preferredProfileId ?? this.selectedResilienceProfileId ?? profiles[0].id;
+      const matched = profiles.find((profile) => profile.id === selected) ?? profiles[0];
+      this.selectedResilienceProfileId = matched.id;
+      this.resilienceDraft = toUpsertResilienceRequest(matched);
+    } catch (error) {
+      this.resilienceErrorMessage = getErrorMessage(error);
+    } finally {
+      this.isResilienceLoading = false;
+    }
+  }
 }
 
 function cloneDefaultCoreRequest(): UpsertCryptoSettingsRequest {
@@ -312,6 +435,10 @@ function cloneDefaultCoreRequest(): UpsertCryptoSettingsRequest {
 
 function cloneDefaultGatewayRequest(): UpsertCryptoGatewaySettingsRequest {
   return { ...DEFAULT_CRYPTO_GATEWAY_SETTINGS_REQUEST };
+}
+
+function cloneDefaultResilienceRequest(): UpsertCryptoGatewayResilienceSettingsRequest {
+  return { ...DEFAULT_CRYPTO_GATEWAY_RESILIENCE_SETTINGS_REQUEST };
 }
 
 function getErrorMessage(error: unknown): string {

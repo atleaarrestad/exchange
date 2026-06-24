@@ -32,6 +32,7 @@ builder.Services.AddMassTransit(configurator =>
     configurator.SetKebabCaseEndpointNameFormatter();
     configurator.AddConsumer<CryptoSettingsProfileChangedConsumer>();
     configurator.AddConsumer<CryptoGatewaySettingsProfileChangedConsumer>();
+    configurator.AddConsumer<CryptoGatewayResilienceSettingsProfileChangedConsumer>();
 
     if (messagingOptions.UseRabbitMq)
     {
@@ -51,6 +52,9 @@ builder.Services.AddMassTransit(configurator =>
             cfg.ReceiveEndpoint(
                 BuildFanoutEndpointName(SettingsChangeOutboxMessageTypes.CryptoGatewaySettingsProfileChanged, messagingOptions.InstanceId),
                 endpoint => endpoint.ConfigureConsumer<CryptoGatewaySettingsProfileChangedConsumer>(context));
+            cfg.ReceiveEndpoint(
+                BuildFanoutEndpointName(SettingsChangeOutboxMessageTypes.CryptoGatewayResilienceSettingsProfileChanged, messagingOptions.InstanceId),
+                endpoint => endpoint.ConfigureConsumer<CryptoGatewayResilienceSettingsProfileChangedConsumer>(context));
         });
         return;
     }
@@ -63,6 +67,9 @@ builder.Services.AddMassTransit(configurator =>
         cfg.ReceiveEndpoint(
             BuildFanoutEndpointName(SettingsChangeOutboxMessageTypes.CryptoGatewaySettingsProfileChanged, messagingOptions.InstanceId),
             endpoint => endpoint.ConfigureConsumer<CryptoGatewaySettingsProfileChangedConsumer>(context));
+        cfg.ReceiveEndpoint(
+            BuildFanoutEndpointName(SettingsChangeOutboxMessageTypes.CryptoGatewayResilienceSettingsProfileChanged, messagingOptions.InstanceId),
+            endpoint => endpoint.ConfigureConsumer<CryptoGatewayResilienceSettingsProfileChangedConsumer>(context));
     });
 });
 // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi

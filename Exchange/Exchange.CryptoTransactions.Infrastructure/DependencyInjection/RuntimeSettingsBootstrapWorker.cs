@@ -10,8 +10,10 @@ public sealed class RuntimeSettingsBootstrapWorker(
     IDbContextFactory<CryptoTransactionsDbContext> dbContextFactory,
     ICryptoSettingsService cryptoSettingsService,
     ICryptoGatewaySettingsService cryptoGatewaySettingsService,
+    ICryptoGatewayResilienceSettingsService cryptoGatewayResilienceSettingsService,
     IBrokeredTradingPolicyProvider tradingPolicyProvider,
-    IKrakenGatewayOptionsProvider krakenGatewayOptionsProvider) : IHostedService
+    IKrakenGatewayOptionsProvider krakenGatewayOptionsProvider,
+    IBlockchainGatewayResiliencePolicyOptionsProvider blockchainGatewayResiliencePolicyOptionsProvider) : IHostedService
 {
     public async Task StartAsync(CancellationToken cancellationToken)
     {
@@ -19,8 +21,10 @@ public sealed class RuntimeSettingsBootstrapWorker(
         await context.Database.MigrateAsync(cancellationToken);
         await cryptoSettingsService.GetAllAsync(cancellationToken);
         await cryptoGatewaySettingsService.GetAllAsync(cancellationToken);
+        await cryptoGatewayResilienceSettingsService.GetAllAsync(cancellationToken);
         await tradingPolicyProvider.RefreshAsync(null, cancellationToken);
         await krakenGatewayOptionsProvider.RefreshAsync(null, cancellationToken);
+        await blockchainGatewayResiliencePolicyOptionsProvider.RefreshAsync(null, cancellationToken);
     }
 
     public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;

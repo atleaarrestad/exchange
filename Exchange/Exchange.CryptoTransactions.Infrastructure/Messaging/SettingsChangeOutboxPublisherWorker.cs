@@ -132,6 +132,11 @@ public sealed class SettingsChangeOutboxPublisherWorker(
                     Deserialize<CryptoGatewaySettingsProfileChangedIntegrationEvent>(entry.PayloadJson),
                     cancellationToken);
                 return;
+            case SettingsChangeOutboxMessageTypes.CryptoGatewayResilienceSettingsProfileChanged:
+                await bus.Publish(
+                    Deserialize<CryptoGatewayResilienceSettingsProfileChangedIntegrationEvent>(entry.PayloadJson),
+                    cancellationToken);
+                return;
             default:
                 throw new InvalidOperationException($"Unknown outbox message type '{entry.MessageType}'.");
         }

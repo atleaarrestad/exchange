@@ -7,6 +7,7 @@ public sealed class CryptoTransactionsDbContext(DbContextOptions<CryptoTransacti
     public DbSet<CryptoTransferIdempotencyReceiptEntity> CryptoTransferIdempotencyReceipts => Set<CryptoTransferIdempotencyReceiptEntity>();
     public DbSet<CryptoSettingsProfileEntity> CryptoSettingsProfiles => Set<CryptoSettingsProfileEntity>();
     public DbSet<CryptoGatewaySettingsProfileEntity> CryptoGatewaySettingsProfiles => Set<CryptoGatewaySettingsProfileEntity>();
+    public DbSet<CryptoGatewayResilienceSettingsProfileEntity> CryptoGatewayResilienceSettingsProfiles => Set<CryptoGatewayResilienceSettingsProfileEntity>();
     public DbSet<SettingsChangeOutboxEntryEntity> SettingsChangeOutboxEntries => Set<SettingsChangeOutboxEntryEntity>();
     public DbSet<ExternalHedgeBatchEntryEntity> ExternalHedgeBatchEntries => Set<ExternalHedgeBatchEntryEntity>();
     public DbSet<BackgroundWorkerHeartbeatEntity> BackgroundWorkerHeartbeats => Set<BackgroundWorkerHeartbeatEntity>();
@@ -113,6 +114,28 @@ public sealed class CryptoTransactionsDbContext(DbContextOptions<CryptoTransacti
 
         gatewaySettings.HasIndex(entity => new { entity.Provider, entity.Name })
             .HasDatabaseName("ix_crypto_gateway_settings_profiles_provider_name");
+
+        var gatewayResilienceSettings = modelBuilder.Entity<CryptoGatewayResilienceSettingsProfileEntity>();
+        gatewayResilienceSettings.ToTable("crypto_gateway_resilience_settings_profiles");
+        gatewayResilienceSettings.HasKey(entity => entity.Id);
+
+        gatewayResilienceSettings.Property(entity => entity.Id).HasColumnName("id");
+        gatewayResilienceSettings.Property(entity => entity.Name).HasColumnName("name").HasMaxLength(100);
+        gatewayResilienceSettings.Property(entity => entity.Enabled).HasColumnName("enabled");
+        gatewayResilienceSettings.Property(entity => entity.OperationTimeoutSeconds).HasColumnName("operation_timeout_seconds");
+        gatewayResilienceSettings.Property(entity => entity.RetryCount).HasColumnName("retry_count");
+        gatewayResilienceSettings.Property(entity => entity.RetryDelayMilliseconds).HasColumnName("retry_delay_milliseconds");
+        gatewayResilienceSettings.Property(entity => entity.FailureRatio).HasColumnName("failure_ratio");
+        gatewayResilienceSettings.Property(entity => entity.MinimumThroughput).HasColumnName("minimum_throughput");
+        gatewayResilienceSettings.Property(entity => entity.SamplingDurationSeconds).HasColumnName("sampling_duration_seconds");
+        gatewayResilienceSettings.Property(entity => entity.BreakDurationSeconds).HasColumnName("break_duration_seconds");
+        gatewayResilienceSettings.Property(entity => entity.MaxParallelization).HasColumnName("max_parallelization");
+        gatewayResilienceSettings.Property(entity => entity.MaxQueueingActions).HasColumnName("max_queueing_actions");
+        gatewayResilienceSettings.Property(entity => entity.CreatedAtUtc).HasColumnName("created_at_utc");
+        gatewayResilienceSettings.Property(entity => entity.UpdatedAtUtc).HasColumnName("updated_at_utc");
+
+        gatewayResilienceSettings.HasIndex(entity => entity.Name)
+            .HasDatabaseName("ix_crypto_gateway_resilience_settings_profiles_name");
 
         var outboxEntries = modelBuilder.Entity<SettingsChangeOutboxEntryEntity>();
         outboxEntries.ToTable("settings_change_outbox_entries");

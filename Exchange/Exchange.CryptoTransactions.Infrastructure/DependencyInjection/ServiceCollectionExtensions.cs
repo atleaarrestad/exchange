@@ -51,15 +51,18 @@ public static class ServiceCollectionExtensions
         services.AddSingleton(brokeredTradingPolicy);
         services.AddSingleton<IBrokeredTradingPolicyProvider, RuntimeBrokeredTradingPolicyProvider>();
         services.AddSingleton<IKrakenGatewayOptionsProvider, RuntimeKrakenGatewayOptionsProvider>();
+        services.AddSingleton<IBlockchainGatewayResiliencePolicyOptionsProvider, RuntimeBlockchainGatewayResiliencePolicyOptionsProvider>();
         services.AddSingleton<ISubmitCryptoTransferCommandValidator, SubmitCryptoTransferCommandValidator>();
         services.AddSingleton<ICryptoSettingsCommandValidator, CryptoSettingsCommandValidator>();
         services.AddSingleton<ICryptoGatewaySettingsCommandValidator, CryptoGatewaySettingsCommandValidator>();
+        services.AddSingleton<ICryptoGatewayResilienceSettingsCommandValidator, CryptoGatewayResilienceSettingsCommandValidator>();
         services.AddSingleton<ICryptoTransferIdempotencyStore>(serviceProvider =>
             new EfCoreCryptoTransferIdempotencyStore(serviceProvider.GetRequiredService<IDbContextFactory<CryptoTransactionsDbContext>>()));
         services.AddSingleton<ICryptoTransferSubmissionSignal, CryptoTransferSubmissionSignal>();
         services.AddSingleton<ICryptoTransferService, CryptoTransferService>();
         services.AddSingleton<ICryptoSettingsService, EfCoreCryptoSettingsService>();
         services.AddSingleton<ICryptoGatewaySettingsService, EfCoreCryptoGatewaySettingsService>();
+        services.AddSingleton<ICryptoGatewayResilienceSettingsService, EfCoreCryptoGatewayResilienceSettingsService>();
         services.AddSingleton<ICryptoTransferTimeoutReconciler, CryptoTransferTimeoutReconciler>();
         services.AddSingleton<IBrokeredCryptoBuyService, BrokeredCryptoBuyService>();
         services.AddSingleton<IExternalHedgeExecutionReadinessGate, EfCoreExternalHedgeExecutionReadinessGate>();
@@ -73,11 +76,9 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IExternalLiquidityHedgingGateway, UnconfiguredExternalLiquidityHedgingGateway>();
         services.AddSingleton<ICryptoTransferFundsReservationGateway, UnconfiguredCryptoTransferFundsReservationGateway>();
         services.AddSingleton<RuntimeKrakenBlockchainTransferGateway>();
+        services.AddSingleton<RuntimeResilientBlockchainTransferGateway>();
         services.AddSingleton<IBlockchainTransferGateway>(serviceProvider =>
-            new ResilientBlockchainTransferGateway(
-                serviceProvider.GetRequiredService<RuntimeKrakenBlockchainTransferGateway>(),
-                serviceProvider.GetRequiredService<BlockchainGatewayResiliencePolicyOptions>(),
-                serviceProvider.GetRequiredService<Microsoft.Extensions.Logging.ILogger<ResilientBlockchainTransferGateway>>()));
+            serviceProvider.GetRequiredService<RuntimeResilientBlockchainTransferGateway>());
         services.AddSingleton<CryptoTransferSubmissionProcessor>();
         if (includeBackgroundWorkers)
         {

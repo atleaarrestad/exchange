@@ -260,6 +260,123 @@
         </mat-card>
       </section>
     </mat-tab>
+    <mat-tab label="Resilience">
+      <section class="tab-content stacked">
+        <mat-card>
+          <mat-card-header>
+            <mat-card-title>Blockchain gateway resilience profiles</mat-card-title>
+          </mat-card-header>
+          <mat-card-content>
+            <div class="profile-toolbar">
+              <mat-form-field appearance="outline">
+                <mat-label>Resilience profile</mat-label>
+                <mat-select [value]="selectedResilienceProfileId" (selectionChange)="onResilienceProfileChanged($event)">
+                  @for (profile of resilienceProfiles; track profile.id) {
+                    <mat-option [value]="profile.id">{{ profile.name }}</mat-option>
+                  }
+                </mat-select>
+              </mat-form-field>
+              <button
+                mat-stroked-button
+                type="button"
+                (click)="refreshResilienceProfiles(selectedResilienceProfileId)"
+                [disabled]="isResilienceLoading">
+                Refresh
+              </button>
+              <button
+                mat-stroked-button
+                type="button"
+                (click)="beginResilienceCreateMode()"
+                [disabled]="isResilienceSaving || isResilienceDeleting">
+                New profile
+              </button>
+              <button
+                mat-flat-button
+                type="button"
+                (click)="createResilienceProfile()"
+                [disabled]="isResilienceLoading || isResilienceSaving || isResilienceDeleting">
+                Create
+              </button>
+              <button
+                mat-flat-button
+                type="button"
+                (click)="updateSelectedResilienceProfile()"
+                [disabled]="selectedResilienceProfileId === null || isResilienceLoading || isResilienceSaving || isResilienceDeleting">
+                Update
+              </button>
+              <button
+                mat-stroked-button
+                type="button"
+                (click)="deleteSelectedResilienceProfile()"
+                [disabled]="selectedResilienceProfileId === null || isResilienceLoading || isResilienceSaving || isResilienceDeleting">
+                Delete
+              </button>
+            </div>
+
+            @if (resilienceErrorMessage !== null) {
+              <p class="status status--error">{{ resilienceErrorMessage }}</p>
+            }
+            @if (resilienceSuccessMessage !== null) {
+              <p class="status status--success">{{ resilienceSuccessMessage }}</p>
+            }
+
+            <div class="settings-grid">
+              <mat-form-field appearance="outline">
+                <mat-label>Name</mat-label>
+                <input matInput [(ngModel)]="resilienceDraft.name" />
+              </mat-form-field>
+
+              <mat-checkbox [(ngModel)]="resilienceDraft.enabled">Resilience enabled</mat-checkbox>
+
+              <mat-form-field appearance="outline">
+                <mat-label>Operation timeout (seconds)</mat-label>
+                <input matInput type="number" [(ngModel)]="resilienceDraft.operationTimeoutSeconds" />
+              </mat-form-field>
+
+              <mat-form-field appearance="outline">
+                <mat-label>Retry count</mat-label>
+                <input matInput type="number" [(ngModel)]="resilienceDraft.retryCount" />
+              </mat-form-field>
+
+              <mat-form-field appearance="outline">
+                <mat-label>Retry delay (milliseconds)</mat-label>
+                <input matInput type="number" [(ngModel)]="resilienceDraft.retryDelayMilliseconds" />
+              </mat-form-field>
+
+              <mat-form-field appearance="outline">
+                <mat-label>Failure ratio</mat-label>
+                <input matInput type="number" step="0.01" [(ngModel)]="resilienceDraft.failureRatio" />
+              </mat-form-field>
+
+              <mat-form-field appearance="outline">
+                <mat-label>Minimum throughput</mat-label>
+                <input matInput type="number" [(ngModel)]="resilienceDraft.minimumThroughput" />
+              </mat-form-field>
+
+              <mat-form-field appearance="outline">
+                <mat-label>Sampling duration (seconds)</mat-label>
+                <input matInput type="number" [(ngModel)]="resilienceDraft.samplingDurationSeconds" />
+              </mat-form-field>
+
+              <mat-form-field appearance="outline">
+                <mat-label>Break duration (seconds)</mat-label>
+                <input matInput type="number" [(ngModel)]="resilienceDraft.breakDurationSeconds" />
+              </mat-form-field>
+
+              <mat-form-field appearance="outline">
+                <mat-label>Max parallelization</mat-label>
+                <input matInput type="number" [(ngModel)]="resilienceDraft.maxParallelization" />
+              </mat-form-field>
+
+              <mat-form-field appearance="outline">
+                <mat-label>Max queueing actions</mat-label>
+                <input matInput type="number" [(ngModel)]="resilienceDraft.maxQueueingActions" />
+              </mat-form-field>
+            </div>
+          </mat-card-content>
+        </mat-card>
+      </section>
+    </mat-tab>
     <mat-tab label="Bank">
       <section class="tab-content">hello world</section>
     </mat-tab>
