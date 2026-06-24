@@ -4,12 +4,11 @@ using Exchange.CryptoTransactions.Application.Contracts;
 using Exchange.CryptoTransactions.Application.Validation;
 using Exchange.CryptoTransactions.Domain.ValueObjects;
 using Exchange.CryptoTransactions.Infrastructure.Persistence;
-using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 
 namespace Exchange.CryptoTransactions.Infrastructure.Gateways;
 
-public sealed class SqliteCryptoTransferIdempotencyStore : ICryptoTransferIdempotencyStore
+public sealed class EfCoreCryptoTransferIdempotencyStore : ICryptoTransferIdempotencyStore
 {
     private const string PendingReceiptMarker = "";
     private static readonly TimeSpan PollInterval = TimeSpan.FromMilliseconds(50);
@@ -21,12 +20,12 @@ public sealed class SqliteCryptoTransferIdempotencyStore : ICryptoTransferIdempo
     private readonly SemaphoreSlim initializationLock = new(1, 1);
     private volatile bool isInitialized;
 
-    public SqliteCryptoTransferIdempotencyStore(string connectionString)
+    public EfCoreCryptoTransferIdempotencyStore(string connectionString)
         : this(CreateFactory(connectionString))
     {
     }
 
-    internal SqliteCryptoTransferIdempotencyStore(IDbContextFactory<CryptoTransactionsDbContext> dbContextFactory)
+    internal EfCoreCryptoTransferIdempotencyStore(IDbContextFactory<CryptoTransactionsDbContext> dbContextFactory)
     {
         this.dbContextFactory = dbContextFactory ?? throw new ArgumentNullException(nameof(dbContextFactory));
     }
@@ -407,7 +406,7 @@ public sealed class SqliteCryptoTransferIdempotencyStore : ICryptoTransferIdempo
         }
 
         var options = new DbContextOptionsBuilder<CryptoTransactionsDbContext>()
-            .UseSqlite(connectionString.Trim())
+            .UseNpgsql(connectionString.Trim())
             .Options;
 
         return new LocalDbContextFactory(options);
@@ -424,18 +423,22 @@ public sealed class SqliteCryptoTransferIdempotencyStore : ICryptoTransferIdempo
 
     private static bool IsUniqueConstraintViolation(DbUpdateException exception)
     {
-        if (exception.InnerException is not SqliteException sqliteException)
+        if (exception.InnerException is null)
         {
             return false;
         }
 
-        const int SqliteConstraintErrorCode = 19;
-        const int SqlitePrimaryKeyConstraintExtendedCode = 1555;
-        const int SqliteUniqueConstraintExtendedCode = 2067;
+        var exceptionType = exception.InnerException.GetType();
 
-        return sqliteException.SqliteErrorCode == SqliteConstraintErrorCode &&
-               (sqliteException.SqliteExtendedErrorCode == SqlitePrimaryKeyConstraintExtendedCode ||
-                sqliteException.SqliteExtendedErrorCode == SqliteUniqueConstraintExtendedCode);
+        var sqlState = exceptionType.GetProperty("SqlState")?.GetValue(exception.InnerException) as string;
+        if (string.Equals(sqlState, "23505", StringComparison.Ordinal))
+        {
+            return true;
+        }
+
+        var message = exception.InnerException.Message;
+        return message.Contains("UNIQUE constraint failed", StringComparison.OrdinalIgnoreCase) ||
+               message.Contains("duplicate key value violates unique constraint", StringComparison.OrdinalIgnoreCase);
     }
 
     private static void EnsureMatchingRequestFingerprint(

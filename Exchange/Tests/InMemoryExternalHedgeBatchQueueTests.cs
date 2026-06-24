@@ -22,7 +22,7 @@ public sealed class InMemoryExternalHedgeBatchQueueTests
             MaxBufferedHedgeCustomerBuys = 2,
             MaxBufferedHedgeDelaySeconds = 120
         };
-        var queue = new InMemoryExternalHedgeBatchQueue(gateway, policy, timeProvider);
+        var queue = new InMemoryExternalHedgeBatchQueue(gateway, new StaticBrokeredTradingPolicyProvider(policy), timeProvider);
 
         await queue.RegisterAsync(new BufferedExternalHedgeRequest("customer-1", "order-1", AssetSymbol.Bitcoin, QuoteCurrency.NorwegianKrone, 0.4m, now));
         await queue.RegisterAsync(new BufferedExternalHedgeRequest("customer-2", "order-2", AssetSymbol.Bitcoin, QuoteCurrency.NorwegianKrone, 0.6m, now));
@@ -46,7 +46,7 @@ public sealed class InMemoryExternalHedgeBatchQueueTests
             MaxBufferedHedgeCustomerBuys = 10,
             MaxBufferedHedgeDelaySeconds = 5
         };
-        var queue = new InMemoryExternalHedgeBatchQueue(gateway, policy, timeProvider);
+        var queue = new InMemoryExternalHedgeBatchQueue(gateway, new StaticBrokeredTradingPolicyProvider(policy), timeProvider);
 
         await queue.RegisterAsync(new BufferedExternalHedgeRequest("customer-3", "order-3", AssetSymbol.Ether, QuoteCurrency.NorwegianKrone, 2m, start));
         timeProvider.Advance(TimeSpan.FromSeconds(6));
@@ -70,7 +70,7 @@ public sealed class InMemoryExternalHedgeBatchQueueTests
             MaxBufferedHedgeCustomerBuys = 2,
             MaxBufferedHedgeDelaySeconds = 120
         };
-        var queue = new InMemoryExternalHedgeBatchQueue(gateway, policy, timeProvider);
+        var queue = new InMemoryExternalHedgeBatchQueue(gateway, new StaticBrokeredTradingPolicyProvider(policy), timeProvider);
 
         await queue.RegisterAsync(new BufferedExternalHedgeRequest("customer-1", "same-order", AssetSymbol.Bitcoin, QuoteCurrency.NorwegianKrone, 0.4m, now));
         await queue.RegisterAsync(new BufferedExternalHedgeRequest("customer-2", "same-order", AssetSymbol.Bitcoin, QuoteCurrency.NorwegianKrone, 0.6m, now));

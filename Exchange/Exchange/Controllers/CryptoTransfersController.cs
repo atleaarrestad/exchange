@@ -1,4 +1,5 @@
 using Exchange.CryptoTransactions.Application;
+using Exchange.Contracts;
 using Microsoft.AspNetCore.Mvc;
 
 namespace Exchange.Controllers;
@@ -35,11 +36,3 @@ public sealed class CryptoTransfersController(ICryptoTransferService cryptoTrans
         return Ok(result);
     }
 }
-
-public sealed record SubmitCryptoTransferRequest(
-    string IdempotencyKey,
-    string SourceAccountId,
-    string DestinationAddress,
-    string AssetSymbol,
-    decimal Amount,
-    decimal NetworkFee);

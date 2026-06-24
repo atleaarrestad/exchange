@@ -7,19 +7,18 @@ namespace Exchange.CryptoTransactions.Infrastructure.DependencyInjection;
 
 public sealed class ExternalHedgeBatchExecutionWorker(
     IExternalHedgeBatchQueue externalHedgeBatchQueue,
-    BrokeredTradingPolicy tradingPolicy,
+    IBrokeredTradingPolicyProvider tradingPolicyProvider,
     ILogger<ExternalHedgeBatchExecutionWorker> logger) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        var intervalSeconds = Math.Max(1, Math.Min(10, tradingPolicy.MaxBufferedHedgeDelaySeconds / 3));
-        var interval = TimeSpan.FromSeconds(intervalSeconds);
-        using var timer = new PeriodicTimer(interval);
-
-        while (await timer.WaitForNextTickAsync(stoppingToken))
+        while (!stoppingToken.IsCancellationRequested)
         {
             try
             {
+                var tradingPolicy = tradingPolicyProvider.GetCurrent();
+                var intervalSeconds = Math.Max(1, Math.Min(10, tradingPolicy.MaxBufferedHedgeDelaySeconds / 3));
+                await Task.Delay(TimeSpan.FromSeconds(intervalSeconds), stoppingToken);
                 await externalHedgeBatchQueue.ExecuteDueAsync(stoppingToken);
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)

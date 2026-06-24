@@ -38,7 +38,7 @@ public sealed record KrakenBlockchainTransferGatewayOptions
             EtherRequiredConfirmations = section.GetValue<int?>(nameof(EtherRequiredConfirmations)) ?? DefaultEtherRequiredConfirmations
         };
 
-        Validate(options);
+        ValidateForRuntime(options);
         return options;
     }
 
@@ -62,7 +62,7 @@ public sealed record KrakenBlockchainTransferGatewayOptions
         };
     }
 
-    private static void Validate(KrakenBlockchainTransferGatewayOptions options)
+    public static void ValidateForRuntime(KrakenBlockchainTransferGatewayOptions options)
     {
         ArgumentNullException.ThrowIfNull(options);
 

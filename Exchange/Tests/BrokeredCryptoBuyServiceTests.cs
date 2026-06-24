@@ -147,7 +147,7 @@ public sealed class BrokeredCryptoBuyServiceTests
             quoteStore ?? new InMemoryQuoteStore(),
             ownershipLedger ?? new InMemoryOwnershipLedger(availableInventory),
             externalHedgeBatchQueue ?? new InMemoryExternalHedgeBatchQueue(),
-            policy);
+            new StaticBrokeredTradingPolicyProvider(policy));
     }
 
     private sealed class InMemoryExternalHedgeBatchQueue : IExternalHedgeBatchQueue

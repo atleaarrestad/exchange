@@ -2,17 +2,23 @@ using Exchange.CryptoTransactions.Application;
 using Exchange.CryptoTransactions.Application.Contracts;
 using Exchange.CryptoTransactions.Domain.ValueObjects;
 using Exchange.CryptoTransactions.Infrastructure.Gateways;
-using Microsoft.Data.Sqlite;
+using Npgsql;
 
 namespace Tests;
 
 [TestClass]
-public sealed class SqliteCryptoTransferIdempotencyStoreTests
+public sealed class EfCoreCryptoTransferIdempotencyStoreTests
 {
+    private const string DefaultHost = "localhost";
+    private const int DefaultPort = 5432;
+    private const string DefaultUsername = "exchange";
+    private const string DefaultPassword = "exchange_dev_password";
+    private const string DatabasePrefix = "exchange_crypto_idempotency_test_";
+
     [TestMethod]
     public async Task ExecuteOnceAsync_WithSameKey_ReturnsStoredReceipt()
     {
-        var store = CreateStore(out var dbPath);
+        var store = CreateStore(out var databaseName, out _);
         try
         {
             var callCount = 0;
@@ -39,14 +45,14 @@ public sealed class SqliteCryptoTransferIdempotencyStoreTests
         }
         finally
         {
-            DeleteFileIfExists(dbPath);
+            DropDatabaseIfExists(databaseName);
         }
     }
 
     [TestMethod]
     public async Task ExecuteOnceAsync_WhenFactoryFails_DoesNotPersistFailedResult()
     {
-        var store = CreateStore(out var dbPath);
+        var store = CreateStore(out var databaseName, out _);
         try
         {
             var callCount = 0;
@@ -79,14 +85,14 @@ public sealed class SqliteCryptoTransferIdempotencyStoreTests
         }
         finally
         {
-            DeleteFileIfExists(dbPath);
+            DropDatabaseIfExists(databaseName);
         }
     }
 
     [TestMethod]
     public async Task ExecuteOnceAsync_WhenFundsReservationFails_DoesNotPersistFailedResult()
     {
-        var store = CreateStore(out var dbPath);
+        var store = CreateStore(out var databaseName, out _);
         try
         {
             var callCount = 0;
@@ -119,14 +125,14 @@ public sealed class SqliteCryptoTransferIdempotencyStoreTests
         }
         finally
         {
-            DeleteFileIfExists(dbPath);
+            DropDatabaseIfExists(databaseName);
         }
     }
 
     [TestMethod]
     public async Task ExecuteOnceAsync_WhenFactoryThrowsArgumentException_DoesNotPersistFailedResult()
     {
-        var store = CreateStore(out var dbPath);
+        var store = CreateStore(out var databaseName, out _);
         try
         {
             var callCount = 0;
@@ -159,15 +165,15 @@ public sealed class SqliteCryptoTransferIdempotencyStoreTests
         }
         finally
         {
-            DeleteFileIfExists(dbPath);
+            DropDatabaseIfExists(databaseName);
         }
     }
 
     [TestMethod]
     public async Task ExecuteOnceAsync_ConcurrentStoresWithSameKey_ExecuteFactoryOnce()
     {
-        var storeA = CreateStore(out var dbPath);
-        var storeB = new SqliteCryptoTransferIdempotencyStore($"Data Source={dbPath};Pooling=False");
+        var storeA = CreateStore(out var databaseName, out var connectionString);
+        var storeB = new EfCoreCryptoTransferIdempotencyStore(connectionString);
 
         try
         {
@@ -200,14 +206,14 @@ public sealed class SqliteCryptoTransferIdempotencyStoreTests
         }
         finally
         {
-            DeleteFileIfExists(dbPath);
+            DropDatabaseIfExists(databaseName);
         }
     }
 
     [TestMethod]
     public async Task ExecuteOnceAsync_WithSameKeyAndDifferentRequestFingerprint_ThrowsConflictException()
     {
-        var store = CreateStore(out var dbPath);
+        var store = CreateStore(out var databaseName, out _);
         try
         {
             Task<CryptoTransferReceipt> Factory(CancellationToken cancellationToken)
@@ -228,14 +234,14 @@ public sealed class SqliteCryptoTransferIdempotencyStoreTests
         }
         finally
         {
-            DeleteFileIfExists(dbPath);
+            DropDatabaseIfExists(databaseName);
         }
     }
 
     [TestMethod]
     public async Task ExecuteOnceAsync_WhenTimedOutTransferBecomesStale_ThrowsPendingExceptionAndPreventsReplay()
     {
-        var store = CreateStore(out var dbPath);
+        var store = CreateStore(out var databaseName, out var connectionString);
         const string sourceAccountId = "account-3";
         const string idempotencyKey = "idem-timeout";
         const string requestFingerprint = "req-timeout";
@@ -251,7 +257,7 @@ public sealed class SqliteCryptoTransferIdempotencyStoreTests
             await Assert.ThrowsExactlyAsync<BlockchainTransferTimeoutException>(() =>
                 store.ExecuteOnceAsync(sourceAccountId, AssetSymbol.Bitcoin, idempotencyKey, requestFingerprint, 0.5m, TimeoutFactory));
 
-            MakePendingRecordStale(dbPath, sourceAccountId, AssetSymbol.Bitcoin.Value, idempotencyKey);
+            MakePendingRecordStale(connectionString, sourceAccountId, AssetSymbol.Bitcoin.Value, idempotencyKey);
 
             Task<CryptoTransferReceipt> SuccessFactory(CancellationToken cancellationToken)
             {
@@ -269,43 +275,112 @@ public sealed class SqliteCryptoTransferIdempotencyStoreTests
         }
         finally
         {
-            DeleteFileIfExists(dbPath);
+            DropDatabaseIfExists(databaseName);
         }
     }
 
-    private static SqliteCryptoTransferIdempotencyStore CreateStore(out string dbPath)
+    private static EfCoreCryptoTransferIdempotencyStore CreateStore(out string databaseName, out string connectionString)
     {
-        dbPath = Path.Combine(Path.GetTempPath(), $"crypto-idempotency-{Guid.NewGuid():N}.db");
-        return new SqliteCryptoTransferIdempotencyStore($"Data Source={dbPath};Pooling=False");
+        EnsurePostgresReachable();
+        databaseName = $"{DatabasePrefix}{Guid.NewGuid():N}";
+        connectionString = BuildConnectionString(databaseName);
+
+        using var adminConnection = new NpgsqlConnection(BuildAdminConnectionString());
+        adminConnection.Open();
+        using var createDatabaseCommand = adminConnection.CreateCommand();
+        createDatabaseCommand.CommandText = $"CREATE DATABASE \"{databaseName}\";";
+        _ = createDatabaseCommand.ExecuteNonQuery();
+
+        return new EfCoreCryptoTransferIdempotencyStore(connectionString);
     }
 
-    private static void DeleteFileIfExists(string path)
+    private static void DropDatabaseIfExists(string databaseName)
     {
-        if (File.Exists(path))
+        if (string.IsNullOrWhiteSpace(databaseName))
         {
-            File.Delete(path);
+            return;
         }
+
+        using var adminConnection = new NpgsqlConnection(BuildAdminConnectionString());
+        adminConnection.Open();
+
+        using var terminateSessionsCommand = adminConnection.CreateCommand();
+        terminateSessionsCommand.CommandText = """
+            SELECT pg_terminate_backend(pid)
+            FROM pg_stat_activity
+            WHERE datname = @databaseName
+              AND pid <> pg_backend_pid();
+            """;
+        terminateSessionsCommand.Parameters.AddWithValue("@databaseName", databaseName);
+        _ = terminateSessionsCommand.ExecuteNonQuery();
+
+        using var dropDatabaseCommand = adminConnection.CreateCommand();
+        dropDatabaseCommand.CommandText = $"DROP DATABASE IF EXISTS \"{databaseName}\";";
+        _ = dropDatabaseCommand.ExecuteNonQuery();
     }
 
-    private static void MakePendingRecordStale(string dbPath, string sourceAccountId, string assetSymbol, string idempotencyKey)
+    private static void MakePendingRecordStale(string connectionString, string sourceAccountId, string assetSymbol, string idempotencyKey)
     {
-        using var connection = new SqliteConnection($"Data Source={dbPath};Pooling=False");
+        using var connection = new NpgsqlConnection(connectionString);
         connection.Open();
 
         using var command = connection.CreateCommand();
         command.CommandText = """
             UPDATE crypto_transfer_idempotency_receipts
-            SET created_at_utc = $createdAtUtc,
-                last_updated_at_utc = $createdAtUtc
-            WHERE source_account_id = $sourceAccountId
-              AND asset_symbol = $assetSymbol
-              AND idempotency_key = $idempotencyKey
+            SET created_at_utc = @createdAtUtc,
+                last_updated_at_utc = @createdAtUtc
+            WHERE source_account_id = @sourceAccountId
+              AND asset_symbol = @assetSymbol
+              AND idempotency_key = @idempotencyKey
               AND status = 0;
             """;
-        command.Parameters.AddWithValue("$createdAtUtc", DateTimeOffset.UtcNow.AddMinutes(-10));
-        command.Parameters.AddWithValue("$sourceAccountId", sourceAccountId);
-        command.Parameters.AddWithValue("$assetSymbol", assetSymbol);
-        command.Parameters.AddWithValue("$idempotencyKey", idempotencyKey);
+        command.Parameters.AddWithValue("@createdAtUtc", DateTimeOffset.UtcNow.AddMinutes(-10));
+        command.Parameters.AddWithValue("@sourceAccountId", sourceAccountId);
+        command.Parameters.AddWithValue("@assetSymbol", assetSymbol);
+        command.Parameters.AddWithValue("@idempotencyKey", idempotencyKey);
         _ = command.ExecuteNonQuery();
+    }
+
+    private static void EnsurePostgresReachable()
+    {
+        try
+        {
+            using var connection = new NpgsqlConnection(BuildAdminConnectionString());
+            connection.Open();
+        }
+        catch (Exception exception)
+        {
+            throw new AssertInconclusiveException(
+                "PostgreSQL test server is not reachable. Configure localhost:5432 with exchange credentials or set EXCHANGE_TEST_POSTGRES_CONNECTION_STRING.",
+                exception);
+        }
+    }
+
+    private static string BuildConnectionString(string databaseName)
+    {
+        var builder = new NpgsqlConnectionStringBuilder(BuildAdminConnectionString())
+        {
+            Database = databaseName,
+            Pooling = false
+        };
+        return builder.ConnectionString;
+    }
+
+    private static string BuildAdminConnectionString()
+    {
+        var configured = Environment.GetEnvironmentVariable("EXCHANGE_TEST_POSTGRES_CONNECTION_STRING");
+        if (!string.IsNullOrWhiteSpace(configured))
+        {
+            return configured;
+        }
+
+        return new NpgsqlConnectionStringBuilder
+        {
+            Host = DefaultHost,
+            Port = DefaultPort,
+            Username = DefaultUsername,
+            Password = DefaultPassword,
+            Database = "postgres"
+        }.ConnectionString;
     }
 }

@@ -28,7 +28,7 @@ Simulation mode is enabled through configuration (`Simulation:Enabled`) and swap
 
 Validation is centralized in the application command validator. Domain invariants remain enforced in value objects/aggregates, and API error responses are normalized as `ProblemDetails`.
 
-Idempotency receipts are persisted in SQLite (`CryptoTransactions:Idempotency:SqliteConnectionString`) so repeat requests with the same `(sourceAccountId, assetSymbol, idempotencyKey)` return the original receipt across process restarts and across concurrent API instances.
+Idempotency receipts are persisted in PostgreSQL (`CryptoTransactions:Idempotency:ConnectionString`) so repeat requests with the same `(sourceAccountId, assetSymbol, idempotencyKey)` return the original receipt across process restarts and across concurrent API instances.
 
 Transfer submission now enforces a funds reservation boundary before the blockchain call. In simulation, an in-memory reservation gateway tracks per-account available balances and rejects transfers that would overdraw.
 

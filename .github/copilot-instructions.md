@@ -29,12 +29,15 @@ Treat correctness, auditability, and safety as mandatory.
    - Keep domain logic out of controllers, UI, infrastructure, and EF Core entities.
    - Application orchestration belongs in application/services layer.
    - Persistence concerns belong in infrastructure layer only.
+   - Controllers must stay thin: map HTTP to application commands/queries and return responses only.
+   - Do not define request/response DTO records or validation logic inside controller files; place API contracts in dedicated contract files and validation in application validators.
 
 2. **Use Domain-Driven Design (DDD)**
    - Model business concepts explicitly with Entities, Value Objects, and Aggregates.
    - Protect invariants in the domain model; do not bypass invariants through direct state mutation.
    - Use domain events when cross-aggregate communication is needed.
    - Keep ubiquitous language consistent in naming.
+   - Keep core crypto trading settings separate from external gateway/provider settings. Gateway configuration must be modeled as provider-extensible modules, not Kraken-specific fields embedded in core settings.
 
 3. **Apply SOLID principles**
    - Small, focused classes with one responsibility.

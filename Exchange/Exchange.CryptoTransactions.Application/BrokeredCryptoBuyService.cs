@@ -10,7 +10,7 @@ public sealed class BrokeredCryptoBuyService(
     IBrokeredCryptoBuyQuoteStore quoteStore,
     ICryptoOwnershipLedger cryptoOwnershipLedger,
     IExternalHedgeBatchQueue externalHedgeBatchQueue,
-    BrokeredTradingPolicy tradingPolicy) : IBrokeredCryptoBuyService
+    IBrokeredTradingPolicyProvider tradingPolicyProvider) : IBrokeredCryptoBuyService
 {
     public async Task<BrokeredCryptoBuyQuote> QuoteAsync(
         QuoteBrokeredCryptoBuyCommand command,
@@ -21,11 +21,13 @@ public sealed class BrokeredCryptoBuyService(
 
         var assetSymbol = AssetSymbol.Parse(command.AssetSymbol, nameof(command.AssetSymbol));
         var quoteCurrency = QuoteCurrency.Parse(command.QuoteCurrency, nameof(command.QuoteCurrency));
+        var tradingPolicy = tradingPolicyProvider.GetCurrent();
         var pricedBuy = await BuildPricedBuyAsync(
             command.CustomerAccountId,
             assetSymbol,
             quoteCurrency,
             command.Quantity,
+            tradingPolicy,
             cancellationToken);
         await quoteStore.StoreAsync(pricedBuy.Quote, cancellationToken);
 
@@ -60,7 +62,8 @@ public sealed class BrokeredCryptoBuyService(
         EnsureMatchingQuote(command, quote, now);
 
         EnforcePriceProtection(command, quote);
-        await EnforceConfiguredSlippageAsync(quote, assetSymbol, quoteCurrency, cancellationToken);
+        var tradingPolicy = tradingPolicyProvider.GetCurrent();
+        await EnforceConfiguredSlippageAsync(quote, assetSymbol, quoteCurrency, tradingPolicy, cancellationToken);
 
         var executedAtUtc = now;
         var ledgerRecord = new OwnershipLedgerBuyRecordCommand(
@@ -98,6 +101,7 @@ public sealed class BrokeredCryptoBuyService(
         AssetSymbol assetSymbol,
         QuoteCurrency quoteCurrency,
         decimal quantity,
+        BrokeredTradingPolicy tradingPolicy,
         CancellationToken cancellationToken)
     {
         tradingPolicy.Validate();
@@ -171,6 +175,7 @@ public sealed class BrokeredCryptoBuyService(
         BrokeredCryptoBuyQuote quote,
         AssetSymbol assetSymbol,
         QuoteCurrency quoteCurrency,
+        BrokeredTradingPolicy tradingPolicy,
         CancellationToken cancellationToken)
     {
         var marketPrice = quote.RequiresExternalHedge

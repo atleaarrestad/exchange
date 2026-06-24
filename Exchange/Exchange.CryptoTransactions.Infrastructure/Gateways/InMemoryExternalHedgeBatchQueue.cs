@@ -5,7 +5,7 @@ namespace Exchange.CryptoTransactions.Infrastructure.Gateways;
 
 public sealed class InMemoryExternalHedgeBatchQueue(
     IExternalLiquidityHedgingGateway externalLiquidityHedgingGateway,
-    BrokeredTradingPolicy tradingPolicy,
+    IBrokeredTradingPolicyProvider tradingPolicyProvider,
     TimeProvider timeProvider) : IExternalHedgeBatchQueue
 {
     private readonly Lock gate = new();
@@ -101,6 +101,7 @@ public sealed class InMemoryExternalHedgeBatchQueue(
     private bool TryTakeDueBatch(out PendingBatch batch)
     {
         var now = timeProvider.GetUtcNow();
+        var tradingPolicy = tradingPolicyProvider.GetCurrent();
         lock (gate)
         {
             foreach (var entry in pendingByBatch)

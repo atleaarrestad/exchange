@@ -3,7 +3,262 @@
 
   <mat-tab-group>
     <mat-tab label="Crypto">
-      <section class="tab-content">hello world</section>
+      <section class="tab-content stacked">
+        <mat-card>
+          <mat-card-header>
+            <mat-card-title>Core crypto settings profiles</mat-card-title>
+          </mat-card-header>
+          <mat-card-content>
+            <div class="profile-toolbar">
+              <mat-form-field appearance="outline">
+                <mat-label>Core profile</mat-label>
+                <mat-select [value]="selectedCoreProfileId" (selectionChange)="onCoreProfileChanged($event)">
+                  @for (profile of coreProfiles; track profile.id) {
+                    <mat-option [value]="profile.id">{{ profile.name }}</mat-option>
+                  }
+                </mat-select>
+              </mat-form-field>
+              <button mat-stroked-button type="button" (click)="refreshCoreProfiles(selectedCoreProfileId)" [disabled]="isCoreLoading">
+                Refresh
+              </button>
+              <button mat-stroked-button type="button" (click)="beginCoreCreateMode()" [disabled]="isCoreSaving || isCoreDeleting">
+                New profile
+              </button>
+              <button mat-flat-button type="button" (click)="createCoreProfile()" [disabled]="isCoreLoading || isCoreSaving || isCoreDeleting">
+                Create
+              </button>
+              <button
+                mat-flat-button
+                type="button"
+                (click)="updateSelectedCoreProfile()"
+                [disabled]="selectedCoreProfileId === null || isCoreLoading || isCoreSaving || isCoreDeleting">
+                Update
+              </button>
+              <button
+                mat-stroked-button
+                type="button"
+                (click)="deleteSelectedCoreProfile()"
+                [disabled]="selectedCoreProfileId === null || isCoreLoading || isCoreSaving || isCoreDeleting">
+                Delete
+              </button>
+            </div>
+
+            @if (coreErrorMessage !== null) {
+              <p class="status status--error">{{ coreErrorMessage }}</p>
+            }
+            @if (coreSuccessMessage !== null) {
+              <p class="status status--success">{{ coreSuccessMessage }}</p>
+            }
+
+            <div class="settings-grid">
+              <mat-form-field appearance="outline">
+                <mat-label>Name</mat-label>
+                <input matInput [(ngModel)]="coreDraft.name" />
+              </mat-form-field>
+
+              <mat-form-field appearance="outline">
+                <mat-label>Quote TTL (seconds)</mat-label>
+                <input matInput type="number" [(ngModel)]="coreDraft.quoteTtlSeconds" />
+              </mat-form-field>
+
+              <mat-form-field appearance="outline">
+                <mat-label>Internal spread (bps)</mat-label>
+                <input matInput type="number" [(ngModel)]="coreDraft.internalOnlySpreadBasisPoints" />
+              </mat-form-field>
+
+              <mat-form-field appearance="outline">
+                <mat-label>External hedge spread (bps)</mat-label>
+                <input matInput type="number" [(ngModel)]="coreDraft.externalHedgeSpreadBasisPoints" />
+              </mat-form-field>
+
+              <mat-form-field appearance="outline">
+                <mat-label>Max slippage (bps)</mat-label>
+                <input matInput type="number" [(ngModel)]="coreDraft.maxAllowedSlippageBasisPoints" />
+              </mat-form-field>
+
+              <mat-form-field appearance="outline">
+                <mat-label>BTC reference price (NOK)</mat-label>
+                <input matInput type="number" [(ngModel)]="coreDraft.bitcoinReferencePriceNok" />
+              </mat-form-field>
+
+              <mat-form-field appearance="outline">
+                <mat-label>ETH reference price (NOK)</mat-label>
+                <input matInput type="number" [(ngModel)]="coreDraft.etherReferencePriceNok" />
+              </mat-form-field>
+
+              <mat-form-field appearance="outline">
+                <mat-label>Initial BTC inventory</mat-label>
+                <input matInput type="number" [(ngModel)]="coreDraft.initialBitcoinInventory" />
+              </mat-form-field>
+
+              <mat-form-field appearance="outline">
+                <mat-label>Initial ETH inventory</mat-label>
+                <input matInput type="number" [(ngModel)]="coreDraft.initialEtherInventory" />
+              </mat-form-field>
+
+              <mat-form-field appearance="outline">
+                <mat-label>Max buffered hedge buys</mat-label>
+                <input matInput type="number" [(ngModel)]="coreDraft.maxBufferedHedgeCustomerBuys" />
+              </mat-form-field>
+
+              <mat-form-field appearance="outline">
+                <mat-label>Max buffered hedge delay (seconds)</mat-label>
+                <input matInput type="number" [(ngModel)]="coreDraft.maxBufferedHedgeDelaySeconds" />
+              </mat-form-field>
+
+              <mat-form-field appearance="outline">
+                <mat-label>Timeout reconciliation scan interval (seconds)</mat-label>
+                <input matInput type="number" [(ngModel)]="coreDraft.timeoutReconciliationScanIntervalSeconds" />
+              </mat-form-field>
+
+              <mat-form-field appearance="outline">
+                <mat-label>Timeout reconciliation stale after (seconds)</mat-label>
+                <input matInput type="number" [(ngModel)]="coreDraft.timeoutReconciliationStaleAfterSeconds" />
+              </mat-form-field>
+
+              <mat-form-field appearance="outline">
+                <mat-label>Simulation min latency (ms)</mat-label>
+                <input matInput type="number" [(ngModel)]="coreDraft.simulationMinLatencyMs" />
+              </mat-form-field>
+
+              <mat-form-field appearance="outline">
+                <mat-label>Simulation max latency (ms)</mat-label>
+                <input matInput type="number" [(ngModel)]="coreDraft.simulationMaxLatencyMs" />
+              </mat-form-field>
+
+              <mat-form-field appearance="outline">
+                <mat-label>Simulation reject rate</mat-label>
+                <input matInput type="number" step="0.01" [(ngModel)]="coreDraft.simulationRejectRate" />
+              </mat-form-field>
+
+              <mat-form-field appearance="outline">
+                <mat-label>Simulation timeout rate</mat-label>
+                <input matInput type="number" step="0.01" [(ngModel)]="coreDraft.simulationTimeoutRate" />
+              </mat-form-field>
+
+              <mat-form-field appearance="outline">
+                <mat-label>Simulation BTC balance</mat-label>
+                <input matInput type="number" [(ngModel)]="coreDraft.simulationDefaultBitcoinAvailableBalance" />
+              </mat-form-field>
+
+              <mat-form-field appearance="outline">
+                <mat-label>Simulation ETH balance</mat-label>
+                <input matInput type="number" [(ngModel)]="coreDraft.simulationDefaultEtherAvailableBalance" />
+              </mat-form-field>
+            </div>
+          </mat-card-content>
+        </mat-card>
+
+        <mat-card>
+          <mat-card-header>
+            <mat-card-title>Gateway settings profiles</mat-card-title>
+          </mat-card-header>
+          <mat-card-content>
+            <div class="profile-toolbar">
+              <mat-form-field appearance="outline">
+                <mat-label>Gateway profile</mat-label>
+                <mat-select [value]="selectedGatewayProfileId" (selectionChange)="onGatewayProfileChanged($event)">
+                  @for (profile of gatewayProfiles; track profile.id) {
+                    <mat-option [value]="profile.id">{{ profile.name }} ({{ profile.provider }})</mat-option>
+                  }
+                </mat-select>
+              </mat-form-field>
+              <button
+                mat-stroked-button
+                type="button"
+                (click)="refreshGatewayProfiles(selectedGatewayProfileId)"
+                [disabled]="isGatewayLoading">
+                Refresh
+              </button>
+              <button
+                mat-stroked-button
+                type="button"
+                (click)="beginGatewayCreateMode()"
+                [disabled]="isGatewaySaving || isGatewayDeleting">
+                New profile
+              </button>
+              <button
+                mat-flat-button
+                type="button"
+                (click)="createGatewayProfile()"
+                [disabled]="isGatewayLoading || isGatewaySaving || isGatewayDeleting">
+                Create
+              </button>
+              <button
+                mat-flat-button
+                type="button"
+                (click)="updateSelectedGatewayProfile()"
+                [disabled]="selectedGatewayProfileId === null || isGatewayLoading || isGatewaySaving || isGatewayDeleting || isGatewayCredentialSaving">
+                Update
+              </button>
+              <button
+                mat-stroked-button
+                type="button"
+                (click)="deleteSelectedGatewayProfile()"
+                [disabled]="selectedGatewayProfileId === null || isGatewayLoading || isGatewaySaving || isGatewayDeleting || isGatewayCredentialSaving">
+                Delete
+              </button>
+              <button
+                mat-flat-button
+                type="button"
+                (click)="saveGatewayCredentials()"
+                [disabled]="selectedGatewayProfileId === null || isGatewayLoading || isGatewaySaving || isGatewayDeleting || isGatewayCredentialSaving">
+                Save new keys
+              </button>
+            </div>
+
+            @if (gatewayErrorMessage !== null) {
+              <p class="status status--error">{{ gatewayErrorMessage }}</p>
+            }
+            @if (gatewaySuccessMessage !== null) {
+              <p class="status status--success">{{ gatewaySuccessMessage }}</p>
+            }
+
+            <div class="settings-grid">
+              <mat-form-field appearance="outline">
+                <mat-label>Name</mat-label>
+                <input matInput [(ngModel)]="gatewayDraft.name" />
+              </mat-form-field>
+
+              <mat-form-field appearance="outline">
+                <mat-label>Provider</mat-label>
+                <mat-select [(ngModel)]="gatewayDraft.provider">
+                  @for (provider of gatewayProviders; track provider) {
+                    <mat-option [value]="provider">{{ provider }}</mat-option>
+                  }
+                </mat-select>
+              </mat-form-field>
+
+              <mat-checkbox [(ngModel)]="gatewayDraft.enabled">Gateway enabled</mat-checkbox>
+
+              <mat-form-field appearance="outline">
+                <mat-label>Base URL</mat-label>
+                <input matInput [(ngModel)]="gatewayDraft.baseUrl" />
+              </mat-form-field>
+
+              <mat-form-field appearance="outline">
+                <mat-label>HTTP timeout (seconds)</mat-label>
+                <input matInput type="number" [(ngModel)]="gatewayDraft.httpTimeoutSeconds" />
+              </mat-form-field>
+
+              <mat-form-field appearance="outline" class="provider-settings-json">
+                <mat-label>Provider settings JSON</mat-label>
+                <textarea matInput rows="7" [(ngModel)]="gatewayDraft.providerSettingsJson"></textarea>
+              </mat-form-field>
+
+              <mat-form-field appearance="outline">
+                <mat-label>New API key</mat-label>
+                <input matInput [(ngModel)]="gatewayCredentialsDraft.apiKey" />
+              </mat-form-field>
+
+              <mat-form-field appearance="outline">
+                <mat-label>New API secret</mat-label>
+                <input matInput type="password" [(ngModel)]="gatewayCredentialsDraft.apiSecret" />
+              </mat-form-field>
+            </div>
+          </mat-card-content>
+        </mat-card>
+      </section>
     </mat-tab>
     <mat-tab label="Bank">
       <section class="tab-content">hello world</section>
