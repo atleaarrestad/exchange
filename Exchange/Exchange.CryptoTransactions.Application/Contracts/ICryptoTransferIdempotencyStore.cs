@@ -28,6 +28,12 @@ public interface ICryptoTransferIdempotencyStore
         DateTimeOffset olderThanUtc,
         CancellationToken cancellationToken = default);
 
+    Task<PendingCryptoTransferOperation?> GetPendingAsync(
+        string sourceAccountId,
+        AssetSymbol assetSymbol,
+        string idempotencyKey,
+        CancellationToken cancellationToken = default);
+
     Task<bool> TryAcquirePendingAsync(
         PendingCryptoTransferOperation operation,
         CancellationToken cancellationToken = default);

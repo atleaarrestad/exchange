@@ -27,6 +27,7 @@ builder.Services.AddMassTransit(configurator =>
     configurator.SetKebabCaseEndpointNameFormatter();
     configurator.AddConsumer<CryptoSettingsProfileChangedConsumer>();
     configurator.AddConsumer<CryptoGatewaySettingsProfileChangedConsumer>();
+    configurator.AddConsumer<CryptoTransferSubmissionRequestedConsumer>();
 
     if (useRabbitMq)
     {
@@ -41,6 +42,15 @@ builder.Services.AddMassTransit(configurator =>
                     host.Password(builder.Configuration.GetValue<string>("Messaging:RabbitMq:Password") ?? "guest");
                 });
             cfg.ReceiveEndpoint(
+                MessagingEndpointNames.CryptoTransferSubmission,
+                endpoint =>
+                {
+                    endpoint.PrefetchCount = 32;
+                    endpoint.ConcurrentMessageLimit = 16;
+                    endpoint.UseMessageRetry(retry => retry.Interval(3, TimeSpan.FromSeconds(2)));
+                    endpoint.ConfigureConsumer<CryptoTransferSubmissionRequestedConsumer>(context);
+                });
+            cfg.ReceiveEndpoint(
                 BuildFanoutEndpointName(SettingsChangeOutboxMessageTypes.CryptoSettingsProfileChanged, instanceId),
                 endpoint => endpoint.ConfigureConsumer<CryptoSettingsProfileChangedConsumer>(context));
             cfg.ReceiveEndpoint(
@@ -52,6 +62,14 @@ builder.Services.AddMassTransit(configurator =>
 
     configurator.UsingInMemory((context, cfg) =>
     {
+        cfg.ReceiveEndpoint(
+            MessagingEndpointNames.CryptoTransferSubmission,
+            endpoint =>
+            {
+                endpoint.ConcurrentMessageLimit = 16;
+                endpoint.UseMessageRetry(retry => retry.Interval(3, TimeSpan.FromSeconds(2)));
+                endpoint.ConfigureConsumer<CryptoTransferSubmissionRequestedConsumer>(context);
+            });
         cfg.ReceiveEndpoint(
             BuildFanoutEndpointName(SettingsChangeOutboxMessageTypes.CryptoSettingsProfileChanged, instanceId),
             endpoint => endpoint.ConfigureConsumer<CryptoSettingsProfileChangedConsumer>(context));

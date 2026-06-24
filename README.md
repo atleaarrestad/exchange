@@ -39,6 +39,6 @@ Idempotency receipts are persisted in PostgreSQL (`CryptoTransactions:Idempotenc
 
 Transfer submission now enforces a funds reservation boundary on the API path, then stores the operation as pending for asynchronous worker execution. In simulation, an in-memory reservation gateway tracks per-account available balances and rejects transfers that would overdraw.
 
-Outbound blockchain submission is executed by the worker with bounded submit timeout handling, while timeout reconciliation remains responsible for unknown outcomes and safe replay protection.
+Outbound blockchain submission is executed by worker consumers via RabbitMQ dispatch, with a bounded-time fallback sweep for orphaned pending operations. Timeout reconciliation remains responsible for unknown outcomes and safe replay protection.
 
 Kraken can be enabled as a real blockchain transfer gateway via `CryptoTransactions:Gateways:Kraken` configuration. When enabled, the infrastructure layer uses Kraken private API signing and withdrawal/status endpoints for BTC/ETH while keeping the same application contracts.

@@ -43,7 +43,7 @@ public sealed class SubmitCryptoTransferValidationTests
         var fundsReservationGateway = new TrackingFundsReservationGateway();
         var validator = new SubmitCryptoTransferCommandValidator();
         var idempotencyStore = new InMemoryIdempotencyStore();
-        var service = new CryptoTransferService(fundsReservationGateway, idempotencyStore, validator);
+        var service = new CryptoTransferService(fundsReservationGateway, idempotencyStore, new NoOpSubmissionSignal(), validator);
         var command = CreateValidCommand();
 
         var first = await service.SubmitAsync(command);
@@ -61,7 +61,7 @@ public sealed class SubmitCryptoTransferValidationTests
         var fundsReservationGateway = new TrackingFundsReservationGateway();
         var validator = new SubmitCryptoTransferCommandValidator();
         var idempotencyStore = new InMemoryIdempotencyStore();
-        var service = new CryptoTransferService(fundsReservationGateway, idempotencyStore, validator);
+        var service = new CryptoTransferService(fundsReservationGateway, idempotencyStore, new NoOpSubmissionSignal(), validator);
 
         await service.SubmitAsync(CreateValidCommand());
         await service.SubmitAsync(CreateValidCommand() with { AssetSymbol = AssetSymbol.Ether.Value });
@@ -75,7 +75,7 @@ public sealed class SubmitCryptoTransferValidationTests
         var fundsReservationGateway = new TrackingFundsReservationGateway();
         var validator = new SubmitCryptoTransferCommandValidator();
         var idempotencyStore = new InMemoryIdempotencyStore();
-        var service = new CryptoTransferService(fundsReservationGateway, idempotencyStore, validator);
+        var service = new CryptoTransferService(fundsReservationGateway, idempotencyStore, new NoOpSubmissionSignal(), validator);
 
         _ = await service.SubmitAsync(CreateValidCommand());
 
@@ -92,7 +92,7 @@ public sealed class SubmitCryptoTransferValidationTests
         };
         var validator = new SubmitCryptoTransferCommandValidator();
         var idempotencyStore = new InMemoryIdempotencyStore();
-        var service = new CryptoTransferService(fundsReservationGateway, idempotencyStore, validator);
+        var service = new CryptoTransferService(fundsReservationGateway, idempotencyStore, new NoOpSubmissionSignal(), validator);
 
         await Assert.ThrowsExactlyAsync<InsufficientFundsException>(() => service.SubmitAsync(CreateValidCommand()));
 
@@ -106,7 +106,7 @@ public sealed class SubmitCryptoTransferValidationTests
         var fundsReservationGateway = new TrackingFundsReservationGateway();
         var validator = new SubmitCryptoTransferCommandValidator();
         var idempotencyStore = new InMemoryIdempotencyStore();
-        var service = new CryptoTransferService(fundsReservationGateway, idempotencyStore, validator);
+        var service = new CryptoTransferService(fundsReservationGateway, idempotencyStore, new NoOpSubmissionSignal(), validator);
 
         await Assert.ThrowsExactlyAsync<ApplicationValidationException>(() =>
             service.SubmitAsync(CreateValidCommand() with { AssetSymbol = "USDT" }));
@@ -181,6 +181,16 @@ public sealed class SubmitCryptoTransferValidationTests
             return Task.FromResult<IReadOnlyList<PendingCryptoTransferOperation>>([]);
         }
 
+        public Task<PendingCryptoTransferOperation?> GetPendingAsync(
+            string sourceAccountId,
+            AssetSymbol assetSymbol,
+            string idempotencyKey,
+            CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return Task.FromResult<PendingCryptoTransferOperation?>(null);
+        }
+
         public Task<bool> TryMarkCompletedAsync(
             PendingCryptoTransferOperation operation,
             CryptoTransferReceipt receipt,
@@ -188,6 +198,15 @@ public sealed class SubmitCryptoTransferValidationTests
         {
             cancellationToken.ThrowIfCancellationRequested();
             return Task.FromResult(false);
+        }
+
+        private sealed class NoOpSubmissionSignal : ICryptoTransferSubmissionSignal
+        {
+            public Task SignalPendingAsync(PendingCryptoTransferOperation operation, CancellationToken cancellationToken = default)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                return Task.CompletedTask;
+            }
         }
 
         public Task<bool> TryAcquirePendingAsync(
@@ -246,6 +265,15 @@ public sealed class SubmitCryptoTransferValidationTests
             AssetSymbol assetSymbol,
             string idempotencyKey,
             CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return Task.CompletedTask;
+        }
+    }
+
+    private sealed class NoOpSubmissionSignal : ICryptoTransferSubmissionSignal
+    {
+        public Task SignalPendingAsync(PendingCryptoTransferOperation operation, CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
             return Task.CompletedTask;

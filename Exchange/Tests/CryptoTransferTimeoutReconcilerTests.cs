@@ -220,6 +220,16 @@ public sealed class CryptoTransferTimeoutReconcilerTests
             return Task.FromResult<IReadOnlyList<PendingCryptoTransferOperation>>(new[] { operation });
         }
 
+        public Task<PendingCryptoTransferOperation?> GetPendingAsync(
+            string sourceAccountId,
+            AssetSymbol assetSymbol,
+            string idempotencyKey,
+            CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return Task.FromResult<PendingCryptoTransferOperation?>(operation);
+        }
+
         public Task<bool> TryMarkCompletedAsync(
             PendingCryptoTransferOperation pendingOperation,
             CryptoTransferReceipt receipt,

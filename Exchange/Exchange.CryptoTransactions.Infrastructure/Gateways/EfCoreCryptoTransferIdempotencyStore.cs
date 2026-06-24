@@ -215,6 +215,46 @@ public sealed class EfCoreCryptoTransferIdempotencyStore : ICryptoTransferIdempo
             .ToArray();
     }
 
+    public async Task<PendingCryptoTransferOperation?> GetPendingAsync(
+        string sourceAccountId,
+        AssetSymbol assetSymbol,
+        string idempotencyKey,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(sourceAccountId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(idempotencyKey);
+        await EnsureInitializedAsync(cancellationToken);
+
+        var normalizedSourceAccountId = sourceAccountId.Trim();
+        var normalizedIdempotencyKey = idempotencyKey.Trim();
+
+        await using var context = await dbContextFactory.CreateDbContextAsync(cancellationToken);
+        var record = await context.CryptoTransferIdempotencyReceipts
+            .AsNoTracking()
+            .SingleOrDefaultAsync(candidate =>
+                candidate.SourceAccountId == normalizedSourceAccountId
+                && candidate.AssetSymbol == assetSymbol.Value
+                && candidate.IdempotencyKey == normalizedIdempotencyKey
+                && candidate.Status == IdempotencyStatus.Pending,
+                cancellationToken);
+        if (record is null)
+        {
+            return null;
+        }
+
+        return new PendingCryptoTransferOperation(
+            record.SourceAccountId,
+            AssetSymbol.Parse(record.AssetSymbol),
+            record.IdempotencyKey,
+            record.RequestFingerprint,
+            record.TotalDebit,
+            record.DestinationAddress,
+            record.Amount,
+            record.NetworkFee,
+            record.CreatedAtUtc,
+            record.LastUpdatedAtUtc);
+    }
+
     public async Task<bool> TryMarkCompletedAsync(
         PendingCryptoTransferOperation operation,
         CryptoTransferReceipt receipt,

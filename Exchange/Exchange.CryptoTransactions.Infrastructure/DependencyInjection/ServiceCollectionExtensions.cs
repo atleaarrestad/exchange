@@ -51,6 +51,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<ICryptoGatewaySettingsCommandValidator, CryptoGatewaySettingsCommandValidator>();
         services.AddSingleton<ICryptoTransferIdempotencyStore>(serviceProvider =>
             new EfCoreCryptoTransferIdempotencyStore(serviceProvider.GetRequiredService<IDbContextFactory<CryptoTransactionsDbContext>>()));
+        services.AddSingleton<ICryptoTransferSubmissionSignal, CryptoTransferSubmissionSignal>();
         services.AddSingleton<ICryptoTransferService, CryptoTransferService>();
         services.AddSingleton<ICryptoSettingsService, EfCoreCryptoSettingsService>();
         services.AddSingleton<ICryptoGatewaySettingsService, EfCoreCryptoGatewaySettingsService>();
@@ -67,6 +68,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IExternalLiquidityHedgingGateway, UnconfiguredExternalLiquidityHedgingGateway>();
         services.AddSingleton<ICryptoTransferFundsReservationGateway, UnconfiguredCryptoTransferFundsReservationGateway>();
         services.AddSingleton<IBlockchainTransferGateway, RuntimeKrakenBlockchainTransferGateway>();
+        services.AddSingleton<CryptoTransferSubmissionProcessor>();
         if (includeBackgroundWorkers)
         {
             services.AddHostedService<CryptoTransferSubmissionWorker>();

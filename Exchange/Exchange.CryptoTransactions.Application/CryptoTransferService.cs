@@ -10,6 +10,7 @@ namespace Exchange.CryptoTransactions.Application;
 public sealed class CryptoTransferService(
     ICryptoTransferFundsReservationGateway fundsReservationGateway,
     ICryptoTransferIdempotencyStore idempotencyStore,
+    ICryptoTransferSubmissionSignal submissionSignal,
     ISubmitCryptoTransferCommandValidator commandValidator) : ICryptoTransferService
 {
     public async Task<CryptoTransferReceipt> SubmitAsync(SubmitCryptoTransferCommand command, CancellationToken cancellationToken = default)
@@ -68,6 +69,7 @@ public sealed class CryptoTransferService(
                     totalDebit,
                     idempotencyKey,
                     CancellationToken.None);
+                await submissionSignal.SignalPendingAsync(operation, cancellationToken);
             }
             catch (Exception exception) when (
                 exception is InsufficientFundsException
