@@ -4,6 +4,7 @@ public static class InfrastructureConfigurationKeys
 {
     public const string IdempotencyConnectionString = "CryptoTransactions:Idempotency:ConnectionString";
     public const string DefaultIdempotencyConnectionString = "Host=localhost;Port=5432;Database=exchange;Username=exchange;Password=exchange_dev_password";
+    public const string RunMigrationsOnStartup = "CryptoTransactions:Database:RunMigrationsOnStartup";
     public const string BrokeredTradingSection = "CryptoTransactions:BrokeredTrading";
     public const string TimeoutReconciliationScanIntervalSeconds = "CryptoTransactions:Idempotency:TimeoutReconciliation:ScanIntervalSeconds";
     public const int DefaultTimeoutReconciliationScanIntervalSeconds = 30;

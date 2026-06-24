@@ -79,7 +79,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IBrokeredCryptoBuyService, BrokeredCryptoBuyService>();
         services.AddSingleton<IExternalHedgeExecutionReadinessGate, EfCoreExternalHedgeExecutionReadinessGate>();
         services.AddSingleton<IBrokeredCryptoBuyQuoteStore, InMemoryBrokeredCryptoBuyQuoteStore>();
-        services.AddSingleton<ICryptoOwnershipLedger, InMemoryCryptoOwnershipLedger>();
+        services.AddSingleton<ICryptoOwnershipLedger, EfCoreCryptoOwnershipLedger>();
         services.AddSingleton(TimeProvider.System);
         services.AddSingleton<IBackgroundWorkerHeartbeatStore, EfCoreBackgroundWorkerHeartbeatStore>();
         services.AddSingleton<IExternalHedgeBatchQueue, EfCoreExternalHedgeBatchQueue>();

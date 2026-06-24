@@ -15,6 +15,11 @@ public sealed class CryptoTransactionsDbContext(DbContextOptions<CryptoTransacti
     public DbSet<CronJobExecutionRecordEntity> CronJobExecutionRecords => Set<CronJobExecutionRecordEntity>();
     public DbSet<ExternalHedgeBatchEntryEntity> ExternalHedgeBatchEntries => Set<ExternalHedgeBatchEntryEntity>();
     public DbSet<BackgroundWorkerHeartbeatEntity> BackgroundWorkerHeartbeats => Set<BackgroundWorkerHeartbeatEntity>();
+    public DbSet<CryptoOwnershipPositionEntity> CryptoOwnershipPositions => Set<CryptoOwnershipPositionEntity>();
+    public DbSet<PlatformInventoryPositionEntity> PlatformInventoryPositions => Set<PlatformInventoryPositionEntity>();
+    public DbSet<BrokeredCryptoBuyExecutionEntity> BrokeredCryptoBuyExecutions => Set<BrokeredCryptoBuyExecutionEntity>();
+    public DbSet<CryptoLedgerTransactionEntity> CryptoLedgerTransactions => Set<CryptoLedgerTransactionEntity>();
+    public DbSet<CryptoLedgerEntryEntity> CryptoLedgerEntries => Set<CryptoLedgerEntryEntity>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -233,5 +238,72 @@ public sealed class CryptoTransactionsDbContext(DbContextOptions<CryptoTransacti
         workerHeartbeats.HasKey(entity => entity.WorkerName);
         workerHeartbeats.Property(entity => entity.WorkerName).HasColumnName("worker_name").HasMaxLength(128);
         workerHeartbeats.Property(entity => entity.LastSeenAtUtc).HasColumnName("last_seen_at_utc");
+
+        var ownershipPositions = modelBuilder.Entity<CryptoOwnershipPositionEntity>();
+        ownershipPositions.ToTable("crypto_ownership_positions");
+        ownershipPositions.HasKey(entity => new { entity.CustomerAccountId, entity.AssetSymbol });
+        ownershipPositions.Property(entity => entity.CustomerAccountId).HasColumnName("customer_account_id").HasMaxLength(64);
+        ownershipPositions.Property(entity => entity.AssetSymbol).HasColumnName("asset_symbol").HasMaxLength(16);
+        ownershipPositions.Property(entity => entity.Quantity).HasColumnName("quantity");
+        ownershipPositions.Property(entity => entity.UpdatedAtUtc).HasColumnName("updated_at_utc");
+
+        var platformInventory = modelBuilder.Entity<PlatformInventoryPositionEntity>();
+        platformInventory.ToTable("platform_inventory_positions");
+        platformInventory.HasKey(entity => entity.AssetSymbol);
+        platformInventory.Property(entity => entity.AssetSymbol).HasColumnName("asset_symbol").HasMaxLength(16);
+        platformInventory.Property(entity => entity.AvailableQuantity).HasColumnName("available_quantity");
+        platformInventory.Property(entity => entity.UpdatedAtUtc).HasColumnName("updated_at_utc");
+
+        var brokeredBuyExecutions = modelBuilder.Entity<BrokeredCryptoBuyExecutionEntity>();
+        brokeredBuyExecutions.ToTable("brokered_crypto_buy_executions");
+        brokeredBuyExecutions.HasKey(entity => entity.Id);
+        brokeredBuyExecutions.Property(entity => entity.Id).HasColumnName("id");
+        brokeredBuyExecutions.Property(entity => entity.ClientOrderId).HasColumnName("client_order_id").HasMaxLength(128);
+        brokeredBuyExecutions.Property(entity => entity.CustomerAccountId).HasColumnName("customer_account_id").HasMaxLength(64);
+        brokeredBuyExecutions.Property(entity => entity.AssetSymbol).HasColumnName("asset_symbol").HasMaxLength(16);
+        brokeredBuyExecutions.Property(entity => entity.QuoteCurrency).HasColumnName("quote_currency").HasMaxLength(16);
+        brokeredBuyExecutions.Property(entity => entity.Quantity).HasColumnName("quantity");
+        brokeredBuyExecutions.Property(entity => entity.InternalFillQuantity).HasColumnName("internal_fill_quantity");
+        brokeredBuyExecutions.Property(entity => entity.ExternalHedgeQuantity).HasColumnName("external_hedge_quantity");
+        brokeredBuyExecutions.Property(entity => entity.UnitPrice).HasColumnName("unit_price");
+        brokeredBuyExecutions.Property(entity => entity.TotalCost).HasColumnName("total_cost");
+        brokeredBuyExecutions.Property(entity => entity.ExecutedAtUtc).HasColumnName("executed_at_utc");
+        brokeredBuyExecutions.Property(entity => entity.ExternalHedgeOrderId).HasColumnName("external_hedge_order_id").HasMaxLength(128);
+        brokeredBuyExecutions.Property(entity => entity.CreatedAtUtc).HasColumnName("created_at_utc");
+        brokeredBuyExecutions.HasIndex(entity => new { entity.CustomerAccountId, entity.AssetSymbol, entity.ClientOrderId })
+            .IsUnique()
+            .HasDatabaseName("ux_brokered_crypto_buy_executions_customer_asset_order");
+
+        var ledgerTransactions = modelBuilder.Entity<CryptoLedgerTransactionEntity>();
+        ledgerTransactions.ToTable("crypto_ledger_transactions");
+        ledgerTransactions.HasKey(entity => entity.Id);
+        ledgerTransactions.Property(entity => entity.Id).HasColumnName("id");
+        ledgerTransactions.Property(entity => entity.OperationType).HasColumnName("operation_type").HasMaxLength(64);
+        ledgerTransactions.Property(entity => entity.OperationId).HasColumnName("operation_id").HasMaxLength(256);
+        ledgerTransactions.Property(entity => entity.ExecutedAtUtc).HasColumnName("executed_at_utc");
+        ledgerTransactions.Property(entity => entity.CreatedAtUtc).HasColumnName("created_at_utc");
+        ledgerTransactions.HasIndex(entity => new { entity.OperationType, entity.OperationId })
+            .IsUnique()
+            .HasDatabaseName("ux_crypto_ledger_transactions_operation");
+
+        var ledgerEntries = modelBuilder.Entity<CryptoLedgerEntryEntity>();
+        ledgerEntries.ToTable("crypto_ledger_entries");
+        ledgerEntries.HasKey(entity => entity.Id);
+        ledgerEntries.Property(entity => entity.Id).HasColumnName("id");
+        ledgerEntries.Property(entity => entity.TransactionId).HasColumnName("transaction_id");
+        ledgerEntries.Property(entity => entity.Sequence).HasColumnName("sequence");
+        ledgerEntries.Property(entity => entity.AssetSymbol).HasColumnName("asset_symbol").HasMaxLength(16);
+        ledgerEntries.Property(entity => entity.AccountKind).HasColumnName("account_kind").HasMaxLength(64);
+        ledgerEntries.Property(entity => entity.AccountId).HasColumnName("account_id").HasMaxLength(128);
+        ledgerEntries.Property(entity => entity.Direction).HasColumnName("direction").HasConversion<int>();
+        ledgerEntries.Property(entity => entity.Quantity).HasColumnName("quantity");
+        ledgerEntries.Property(entity => entity.CreatedAtUtc).HasColumnName("created_at_utc");
+        ledgerEntries.HasIndex(entity => new { entity.TransactionId, entity.Sequence })
+            .IsUnique()
+            .HasDatabaseName("ux_crypto_ledger_entries_transaction_sequence");
+        ledgerEntries.HasOne<CryptoLedgerTransactionEntity>()
+            .WithMany()
+            .HasForeignKey(entity => entity.TransactionId)
+            .OnDelete(DeleteBehavior.Cascade);
     }
 }

@@ -11,6 +11,7 @@ using Polly.Timeout;
 var builder = Host.CreateApplicationBuilder(args);
 
 builder.Services.AddCryptoTransactionsInfrastructure(builder.Configuration);
+var runMigrationsOnStartup = builder.Configuration.GetValue<bool>(InfrastructureConfigurationKeys.RunMigrationsOnStartup);
 
 var isSimulationEnabled = builder.Configuration
     .GetSection("Simulation")
@@ -89,4 +90,8 @@ builder.Services.AddMassTransit(configurator =>
 });
 
 var appHost = builder.Build();
+if (runMigrationsOnStartup)
+{
+    await appHost.Services.MigrateCryptoTransactionsDatabaseAsync();
+}
 appHost.Run();

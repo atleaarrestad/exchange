@@ -65,6 +65,13 @@ builder.Services.AddMassTransit(configurator =>
 builder.Services.AddOpenApi();
 
 var app = builder.Build();
+
+var runMigrationsOnStartup = builder.Configuration.GetValue<bool>(InfrastructureConfigurationKeys.RunMigrationsOnStartup);
+if (runMigrationsOnStartup)
+{
+    await app.Services.MigrateCryptoTransactionsDatabaseAsync();
+}
+
 app.UseMiddleware<ApiExceptionMappingMiddleware>();
 
 // Configure the HTTP request pipeline.
