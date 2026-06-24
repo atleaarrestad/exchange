@@ -16,7 +16,7 @@ builder.Services.AddInfrastructureCaching();
 builder.Services.AddCryptoTransactionsInfrastructure(
     builder.Configuration,
     includeBackgroundWorkers: false,
-    includeBootstrapWorker: true);
+    includeBootstrapWorker: false);
 var messagingOptions = MessagingTransportOptions.FromConfiguration(builder.Configuration);
 
 var isSimulationEnabled = builder.Configuration.GetSection(ConfigurationKeys.SimulationSection)

@@ -16,6 +16,9 @@ public sealed class CryptoTransferTimeoutReconcilerTests
             "idem-1",
             "fingerprint-1",
             1.25m,
+            "bc1destination",
+            1.2m,
+            0.05m,
             DateTimeOffset.UtcNow.AddMinutes(-10),
             DateTimeOffset.UtcNow.AddMinutes(-10));
         var idempotencyStore = new TrackingIdempotencyStore(operation);
@@ -44,6 +47,9 @@ public sealed class CryptoTransferTimeoutReconcilerTests
             "idem-2",
             "fingerprint-2",
             0.25m,
+            "0xabc",
+            0.2m,
+            0.05m,
             DateTimeOffset.UtcNow.AddMinutes(-10),
             DateTimeOffset.UtcNow.AddMinutes(-10));
         var idempotencyStore = new TrackingIdempotencyStore(operation);
@@ -69,6 +75,9 @@ public sealed class CryptoTransferTimeoutReconcilerTests
             "idem-young",
             "fingerprint-young",
             0.25m,
+            "0xabc",
+            0.2m,
+            0.05m,
             DateTimeOffset.UtcNow.AddSeconds(-30),
             DateTimeOffset.UtcNow.AddSeconds(-30));
         var idempotencyStore = new TrackingIdempotencyStore(operation);
@@ -94,6 +103,9 @@ public sealed class CryptoTransferTimeoutReconcilerTests
             "idem-3",
             "fingerprint-3",
             0.75m,
+            "0xabc",
+            0.7m,
+            0.05m,
             DateTimeOffset.UtcNow.AddMinutes(-10),
             DateTimeOffset.UtcNow.AddMinutes(-10));
         var idempotencyStore = new TrackingIdempotencyStore(operation);
@@ -120,6 +132,9 @@ public sealed class CryptoTransferTimeoutReconcilerTests
             "idem-4",
             "fingerprint-4",
             0.33m,
+            "bc1destination",
+            0.3m,
+            0.03m,
             DateTimeOffset.UtcNow.AddMinutes(-10),
             DateTimeOffset.UtcNow.AddMinutes(-10));
         var idempotencyStore = new TrackingIdempotencyStore(operation)
@@ -168,6 +183,21 @@ public sealed class CryptoTransferTimeoutReconcilerTests
         public int AcquirePendingCount { get; private set; }
         public int MarkCompletedCount { get; private set; }
         public int ReleasePendingCount { get; private set; }
+
+        public Task<CryptoTransferIdempotencyRegistration> RegisterPendingAsync(
+            string sourceAccountId,
+            AssetSymbol assetSymbol,
+            string idempotencyKey,
+            string requestFingerprint,
+            decimal totalDebit,
+            string destinationAddress,
+            decimal amount,
+            decimal networkFee,
+            CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return Task.FromResult(new CryptoTransferIdempotencyRegistration(true, null));
+        }
 
         public Task<CryptoTransferReceipt> ExecuteOnceAsync(
             string sourceAccountId,

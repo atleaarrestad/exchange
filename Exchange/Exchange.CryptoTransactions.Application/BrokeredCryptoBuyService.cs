@@ -10,6 +10,7 @@ public sealed class BrokeredCryptoBuyService(
     IBrokeredCryptoBuyQuoteStore quoteStore,
     ICryptoOwnershipLedger cryptoOwnershipLedger,
     IExternalHedgeBatchQueue externalHedgeBatchQueue,
+    IExternalHedgeExecutionReadinessGate externalHedgeExecutionReadinessGate,
     IBrokeredTradingPolicyProvider tradingPolicyProvider) : IBrokeredCryptoBuyService
 {
     public async Task<BrokeredCryptoBuyQuote> QuoteAsync(
@@ -78,6 +79,11 @@ public sealed class BrokeredCryptoBuyService(
             quote.TotalCost,
             executedAtUtc,
             null);
+
+        if (quote.ExternalHedgeQuantity > 0m)
+        {
+            await externalHedgeExecutionReadinessGate.EnsureReadyAsync(cancellationToken);
+        }
 
         var receipt = await cryptoOwnershipLedger.RecordCustomerBuyAsync(ledgerRecord, cancellationToken);
         if (quote.ExternalHedgeQuantity > 0m)

@@ -30,8 +30,8 @@ Validation is centralized in the application command validator. Domain invariant
 
 Idempotency receipts are persisted in PostgreSQL (`CryptoTransactions:Idempotency:ConnectionString`) so repeat requests with the same `(sourceAccountId, assetSymbol, idempotencyKey)` return the original receipt across process restarts and across concurrent API instances.
 
-Transfer submission now enforces a funds reservation boundary before the blockchain call. In simulation, an in-memory reservation gateway tracks per-account available balances and rejects transfers that would overdraw.
+Transfer submission now enforces a funds reservation boundary on the API path, then stores the operation as pending for asynchronous worker execution. In simulation, an in-memory reservation gateway tracks per-account available balances and rejects transfers that would overdraw.
 
-Outbound blockchain submission is wrapped with a Polly timeout policy to prevent unbounded external call duration while preserving idempotency-first handling of unknown outcomes.
+Outbound blockchain submission is executed by the worker with bounded submit timeout handling, while timeout reconciliation remains responsible for unknown outcomes and safe replay protection.
 
 Kraken can be enabled as a real blockchain transfer gateway via `CryptoTransactions:Gateways:Kraken` configuration. When enabled, the infrastructure layer uses Kraken private API signing and withdrawal/status endpoints for BTC/ETH while keeping the same application contracts.

@@ -4,6 +4,17 @@ namespace Exchange.CryptoTransactions.Application.Contracts;
 
 public interface ICryptoTransferIdempotencyStore
 {
+    Task<CryptoTransferIdempotencyRegistration> RegisterPendingAsync(
+        string sourceAccountId,
+        AssetSymbol assetSymbol,
+        string idempotencyKey,
+        string requestFingerprint,
+        decimal totalDebit,
+        string destinationAddress,
+        decimal amount,
+        decimal networkFee,
+        CancellationToken cancellationToken = default);
+
     Task<CryptoTransferReceipt> ExecuteOnceAsync(
         string sourceAccountId,
         AssetSymbol assetSymbol,

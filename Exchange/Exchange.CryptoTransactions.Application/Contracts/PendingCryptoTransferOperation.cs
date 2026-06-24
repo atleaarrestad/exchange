@@ -8,5 +8,8 @@ public sealed record PendingCryptoTransferOperation(
     string IdempotencyKey,
     string RequestFingerprint,
     decimal TotalDebit,
+    string DestinationAddress,
+    decimal Amount,
+    decimal NetworkFee,
     DateTimeOffset CreatedAtUtc,
     DateTimeOffset LastUpdatedAtUtc);

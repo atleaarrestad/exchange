@@ -56,9 +56,11 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<ICryptoGatewaySettingsService, EfCoreCryptoGatewaySettingsService>();
         services.AddSingleton<ICryptoTransferTimeoutReconciler, CryptoTransferTimeoutReconciler>();
         services.AddSingleton<IBrokeredCryptoBuyService, BrokeredCryptoBuyService>();
+        services.AddSingleton<IExternalHedgeExecutionReadinessGate, EfCoreExternalHedgeExecutionReadinessGate>();
         services.AddSingleton<IBrokeredCryptoBuyQuoteStore, InMemoryBrokeredCryptoBuyQuoteStore>();
         services.AddSingleton<ICryptoOwnershipLedger, InMemoryCryptoOwnershipLedger>();
         services.AddSingleton(TimeProvider.System);
+        services.AddSingleton<IBackgroundWorkerHeartbeatStore, EfCoreBackgroundWorkerHeartbeatStore>();
         services.AddSingleton<IExternalHedgeBatchQueue, EfCoreExternalHedgeBatchQueue>();
         services.AddSingleton<IInternalReferencePriceFeed, StaticReferencePriceFeed>();
         services.AddSingleton<ILiveMarketPriceFeed, UnconfiguredLiveMarketPriceFeed>();
@@ -67,6 +69,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IBlockchainTransferGateway, RuntimeKrakenBlockchainTransferGateway>();
         if (includeBackgroundWorkers)
         {
+            services.AddHostedService<CryptoTransferSubmissionWorker>();
             services.AddHostedService<CryptoTransferTimeoutReconciliationWorker>();
             services.AddHostedService<ExternalHedgeBatchExecutionWorker>();
             services.AddHostedService<SettingsChangeOutboxPublisherWorker>();

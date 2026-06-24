@@ -2,6 +2,8 @@ using Exchange.CryptoTransactions.Application;
 using Exchange.CryptoTransactions.Application.Contracts;
 using Exchange.CryptoTransactions.Domain.ValueObjects;
 using Exchange.CryptoTransactions.Infrastructure.Gateways;
+using Exchange.CryptoTransactions.Infrastructure.Persistence;
+using Microsoft.EntityFrameworkCore;
 using Npgsql;
 
 namespace Tests;
@@ -290,6 +292,14 @@ public sealed class EfCoreCryptoTransferIdempotencyStoreTests
         using var createDatabaseCommand = adminConnection.CreateCommand();
         createDatabaseCommand.CommandText = $"CREATE DATABASE \"{databaseName}\";";
         _ = createDatabaseCommand.ExecuteNonQuery();
+
+        var dbOptions = new DbContextOptionsBuilder<CryptoTransactionsDbContext>()
+            .UseNpgsql(connectionString)
+            .Options;
+        using (var context = new CryptoTransactionsDbContext(dbOptions))
+        {
+            context.Database.EnsureCreated();
+        }
 
         return new EfCoreCryptoTransferIdempotencyStore(connectionString);
     }

@@ -5,4 +5,5 @@ public sealed record CryptoTransferReceipt(
     string GatewayTransactionId,
     DateTimeOffset SubmittedAtUtc,
     decimal TotalDebit,
-    int RequiredConfirmations);
+    int RequiredConfirmations,
+    CryptoTransferReceiptStatus Status = CryptoTransferReceiptStatus.Submitted);

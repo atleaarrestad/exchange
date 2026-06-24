@@ -147,7 +147,17 @@ public sealed class BrokeredCryptoBuyServiceTests
             quoteStore ?? new InMemoryQuoteStore(),
             ownershipLedger ?? new InMemoryOwnershipLedger(availableInventory),
             externalHedgeBatchQueue ?? new InMemoryExternalHedgeBatchQueue(),
+            new AlwaysReadyExternalHedgeExecutionReadinessGate(),
             new StaticBrokeredTradingPolicyProvider(policy));
+    }
+
+    private sealed class AlwaysReadyExternalHedgeExecutionReadinessGate : IExternalHedgeExecutionReadinessGate
+    {
+        public Task EnsureReadyAsync(CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return Task.CompletedTask;
+        }
     }
 
     private sealed class InMemoryExternalHedgeBatchQueue : IExternalHedgeBatchQueue

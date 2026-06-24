@@ -9,6 +9,7 @@ public sealed class CryptoTransactionsDbContext(DbContextOptions<CryptoTransacti
     public DbSet<CryptoGatewaySettingsProfileEntity> CryptoGatewaySettingsProfiles => Set<CryptoGatewaySettingsProfileEntity>();
     public DbSet<SettingsChangeOutboxEntryEntity> SettingsChangeOutboxEntries => Set<SettingsChangeOutboxEntryEntity>();
     public DbSet<ExternalHedgeBatchEntryEntity> ExternalHedgeBatchEntries => Set<ExternalHedgeBatchEntryEntity>();
+    public DbSet<BackgroundWorkerHeartbeatEntity> BackgroundWorkerHeartbeats => Set<BackgroundWorkerHeartbeatEntity>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -35,6 +36,13 @@ public sealed class CryptoTransactionsDbContext(DbContextOptions<CryptoTransacti
 
         receipt.Property(entity => entity.TotalDebit)
             .HasColumnName("total_debit");
+        receipt.Property(entity => entity.DestinationAddress)
+            .HasColumnName("destination_address")
+            .HasMaxLength(256);
+        receipt.Property(entity => entity.Amount)
+            .HasColumnName("amount");
+        receipt.Property(entity => entity.NetworkFee)
+            .HasColumnName("network_fee");
 
         receipt.Property(entity => entity.ReceiptJson)
             .HasColumnName("receipt_json");
@@ -147,5 +155,11 @@ public sealed class CryptoTransactionsDbContext(DbContextOptions<CryptoTransacti
             .HasDatabaseName("ix_external_hedge_batch_entries_due_lookup");
         externalHedgeBatchEntries.HasIndex(entity => entity.LeaseToken)
             .HasDatabaseName("ix_external_hedge_batch_entries_lease_token");
+
+        var workerHeartbeats = modelBuilder.Entity<BackgroundWorkerHeartbeatEntity>();
+        workerHeartbeats.ToTable("background_worker_heartbeats");
+        workerHeartbeats.HasKey(entity => entity.WorkerName);
+        workerHeartbeats.Property(entity => entity.WorkerName).HasColumnName("worker_name").HasMaxLength(128);
+        workerHeartbeats.Property(entity => entity.LastSeenAtUtc).HasColumnName("last_seen_at_utc");
     }
 }

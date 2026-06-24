@@ -1,9 +1,6 @@
 using Exchange.CryptoTransactions.Application.Contracts;
 using Exchange.CryptoTransactions.Application.Validation;
-using Exchange.CryptoTransactions.Domain.Aggregates;
 using Exchange.CryptoTransactions.Domain.ValueObjects;
-using Polly;
-using Polly.Timeout;
 using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
@@ -11,15 +8,10 @@ using System.Text;
 namespace Exchange.CryptoTransactions.Application;
 
 public sealed class CryptoTransferService(
-    IBlockchainTransferGateway blockchainTransferGateway,
     ICryptoTransferFundsReservationGateway fundsReservationGateway,
     ICryptoTransferIdempotencyStore idempotencyStore,
     ISubmitCryptoTransferCommandValidator commandValidator) : ICryptoTransferService
 {
-    private static readonly TimeSpan GatewaySubmitTimeout = TimeSpan.FromSeconds(30);
-    private static readonly AsyncTimeoutPolicy<BlockchainTransferResult> GatewayTimeoutPolicy =
-        Policy.TimeoutAsync<BlockchainTransferResult>(GatewaySubmitTimeout, TimeoutStrategy.Optimistic);
-
     public async Task<CryptoTransferReceipt> SubmitAsync(SubmitCryptoTransferCommand command, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(command);
@@ -39,92 +31,89 @@ public sealed class CryptoTransferService(
             command.Amount,
             command.NetworkFee);
         var totalDebit = checked(command.Amount + command.NetworkFee);
-
-        return await idempotencyStore.ExecuteOnceAsync(
+        var registration = await idempotencyStore.RegisterPendingAsync(
             sourceAccountId,
             assetSymbol,
             idempotencyKey,
             requestFingerprint,
             totalDebit,
-            async _ =>
+            destinationAddress,
+            command.Amount,
+            command.NetworkFee,
+            cancellationToken);
+        if (registration.CompletedReceipt is not null)
+        {
+            return registration.CompletedReceipt;
+        }
+
+        if (registration.CreatedPending)
+        {
+            var operation = new PendingCryptoTransferOperation(
+                sourceAccountId,
+                assetSymbol,
+                idempotencyKey,
+                requestFingerprint,
+                totalDebit,
+                destinationAddress,
+                command.Amount,
+                command.NetworkFee,
+                DateTimeOffset.MinValue,
+                DateTimeOffset.MinValue);
+
+            try
             {
-                var transfer = new CryptoTransfer(
-                    idempotencyKey,
-                    sourceAccountId,
-                    destinationAddress,
-                    new CryptoAmount(assetSymbol, command.Amount),
-                    new NetworkFee(command.NetworkFee),
-                    DateTimeOffset.UtcNow);
-
-                var gatewayRequest = new BlockchainTransferRequest(
-                    transfer.IdempotencyKey,
-                    transfer.SourceAccountId,
-                    transfer.DestinationAddress,
-                    transfer.Amount.AssetSymbol,
-                    transfer.Amount.Value,
-                    transfer.Fee.Value,
-                    transfer.TotalDebit);
-
-                var reservationCreated = false;
                 await fundsReservationGateway.ReserveAsync(
-                    transfer.SourceAccountId,
-                    transfer.Amount.AssetSymbol,
-                    transfer.TotalDebit,
-                    transfer.IdempotencyKey,
+                    sourceAccountId,
+                    assetSymbol,
+                    totalDebit,
+                    idempotencyKey,
                     CancellationToken.None);
-                reservationCreated = true;
-
-                try
+            }
+            catch (Exception exception) when (
+                exception is InsufficientFundsException
+                or ApplicationValidationException
+                or ArgumentException
+                or ExternalDependencyNotConfiguredException)
+            {
+                var released = await idempotencyStore.TryReleasePendingAsync(operation, CancellationToken.None);
+                if (!released)
                 {
-                    var gatewayResult = await GatewayTimeoutPolicy.ExecuteAsync(
-                        async _ => await blockchainTransferGateway.SubmitAsync(gatewayRequest, CancellationToken.None),
-                        CancellationToken.None);
-
-                    await fundsReservationGateway.CommitAsync(
-                        transfer.SourceAccountId,
-                        transfer.Amount.AssetSymbol,
-                        transfer.IdempotencyKey,
-                        CancellationToken.None);
-
-                    return new CryptoTransferReceipt(
-                        transfer.Id,
-                        gatewayResult.GatewayTransactionId,
-                        gatewayResult.SubmittedAtUtc,
-                        transfer.TotalDebit,
-                        gatewayResult.RequiredConfirmations);
-                }
-                catch (TimeoutRejectedException exception)
-                {
-                    throw new BlockchainTransferTimeoutException(
-                        $"Blockchain gateway did not respond within {GatewaySubmitTimeout.TotalSeconds:0} seconds.",
+                    throw new InvalidOperationException(
+                        $"Unable to release pending transfer '{sourceAccountId}/{assetSymbol.Value}/{idempotencyKey}' after reservation failure.",
                         exception);
                 }
-                catch (BlockchainTransferRejectedException)
-                {
-                    if (reservationCreated)
-                    {
-                        await fundsReservationGateway.ReleaseAsync(
-                            transfer.SourceAccountId,
-                            transfer.Amount.AssetSymbol,
-                            transfer.IdempotencyKey,
-                            CancellationToken.None);
-                    }
-                    throw;
-                }
-                catch (ExternalDependencyNotConfiguredException)
-                {
-                    if (reservationCreated)
-                    {
-                        await fundsReservationGateway.ReleaseAsync(
-                            transfer.SourceAccountId,
-                            transfer.Amount.AssetSymbol,
-                            transfer.IdempotencyKey,
-                            CancellationToken.None);
-                    }
-                    throw;
-                }
-            },
-            cancellationToken);
+
+                throw;
+            }
+        }
+
+        return CreatePendingReceipt(sourceAccountId, assetSymbol, idempotencyKey, totalDebit);
+    }
+
+    private static CryptoTransferReceipt CreatePendingReceipt(
+        string sourceAccountId,
+        AssetSymbol assetSymbol,
+        string idempotencyKey,
+        decimal totalDebit)
+    {
+        return new CryptoTransferReceipt(
+            TransferId: DeriveDeterministicTransferId(sourceAccountId, assetSymbol, idempotencyKey),
+            GatewayTransactionId: string.Empty,
+            SubmittedAtUtc: DateTimeOffset.UtcNow,
+            TotalDebit: totalDebit,
+            RequiredConfirmations: 0,
+            Status: CryptoTransferReceiptStatus.Pending);
+    }
+
+    private static Guid DeriveDeterministicTransferId(
+        string sourceAccountId,
+        AssetSymbol assetSymbol,
+        string idempotencyKey)
+    {
+        var payload = $"{sourceAccountId}|{assetSymbol.Value}|{idempotencyKey}";
+        Span<byte> hash = stackalloc byte[32];
+        SHA256.TryHashData(Encoding.UTF8.GetBytes(payload), hash, out _);
+        return new Guid(hash[..16]);
     }
 
     private static string CreateRequestFingerprint(

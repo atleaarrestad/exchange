@@ -30,6 +30,76 @@ public sealed class EfCoreCryptoTransferIdempotencyStore : ICryptoTransferIdempo
         this.dbContextFactory = dbContextFactory ?? throw new ArgumentNullException(nameof(dbContextFactory));
     }
 
+    public async Task<CryptoTransferIdempotencyRegistration> RegisterPendingAsync(
+        string sourceAccountId,
+        AssetSymbol assetSymbol,
+        string idempotencyKey,
+        string requestFingerprint,
+        decimal totalDebit,
+        string destinationAddress,
+        decimal amount,
+        decimal networkFee,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(sourceAccountId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(idempotencyKey);
+        ArgumentException.ThrowIfNullOrWhiteSpace(requestFingerprint);
+        ArgumentException.ThrowIfNullOrWhiteSpace(destinationAddress);
+        if (totalDebit <= 0m)
+        {
+            throw new ArgumentOutOfRangeException(nameof(totalDebit), totalDebit, "Total debit must be greater than zero.");
+        }
+
+        await EnsureInitializedAsync(cancellationToken);
+
+        var normalizedSourceAccountId = sourceAccountId.Trim();
+        var normalizedIdempotencyKey = idempotencyKey.Trim();
+        var normalizedRequestFingerprint = requestFingerprint.Trim();
+        var normalizedDestinationAddress = destinationAddress.Trim();
+
+        while (true)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var existingRecord = await GetExistingRecordAsync(
+                normalizedSourceAccountId,
+                assetSymbol,
+                normalizedIdempotencyKey,
+                cancellationToken);
+
+            if (existingRecord is not null)
+            {
+                EnsureMatchingRequestFingerprint(existingRecord, normalizedRequestFingerprint);
+                if (existingRecord.Status == IdempotencyStatus.Completed)
+                {
+                    return new CryptoTransferIdempotencyRegistration(
+                        CreatedPending: false,
+                        CompletedReceipt: DeserializeReceipt(existingRecord.ReceiptJson));
+                }
+
+                return new CryptoTransferIdempotencyRegistration(
+                    CreatedPending: false,
+                    CompletedReceipt: null);
+            }
+
+            var created = await TryInsertPendingRecordAsync(
+                normalizedSourceAccountId,
+                assetSymbol,
+                normalizedIdempotencyKey,
+                normalizedRequestFingerprint,
+                totalDebit,
+                normalizedDestinationAddress,
+                amount,
+                networkFee,
+                cancellationToken);
+            if (created)
+            {
+                return new CryptoTransferIdempotencyRegistration(
+                    CreatedPending: true,
+                    CompletedReceipt: null);
+            }
+        }
+    }
+
     public async Task<CryptoTransferReceipt> ExecuteOnceAsync(
         string sourceAccountId,
         AssetSymbol assetSymbol,
@@ -83,6 +153,9 @@ public sealed class EfCoreCryptoTransferIdempotencyStore : ICryptoTransferIdempo
                         normalizedIdempotencyKey,
                         normalizedRequestFingerprint,
                         totalDebit,
+                        destinationAddress: "legacy-execute-once",
+                        amount: totalDebit,
+                        networkFee: 0m,
                         cancellationToken))
                 {
                     return await ExecuteOwnedPendingAsync(
@@ -134,6 +207,9 @@ public sealed class EfCoreCryptoTransferIdempotencyStore : ICryptoTransferIdempo
                 record.IdempotencyKey,
                 record.RequestFingerprint,
                 record.TotalDebit,
+                record.DestinationAddress,
+                record.Amount,
+                record.NetworkFee,
                 record.CreatedAtUtc,
                 record.LastUpdatedAtUtc))
             .ToArray();
@@ -252,6 +328,9 @@ public sealed class EfCoreCryptoTransferIdempotencyStore : ICryptoTransferIdempo
         string idempotencyKey,
         string requestFingerprint,
         decimal totalDebit,
+        string destinationAddress,
+        decimal amount,
+        decimal networkFee,
         CancellationToken cancellationToken)
     {
         await using var context = await dbContextFactory.CreateDbContextAsync(cancellationToken);
@@ -262,6 +341,9 @@ public sealed class EfCoreCryptoTransferIdempotencyStore : ICryptoTransferIdempo
             IdempotencyKey = idempotencyKey,
             RequestFingerprint = requestFingerprint,
             TotalDebit = totalDebit,
+            DestinationAddress = destinationAddress,
+            Amount = amount,
+            NetworkFee = networkFee,
             ReceiptJson = PendingReceiptMarker,
             CreatedAtUtc = DateTimeOffset.UtcNow,
             LastUpdatedAtUtc = DateTimeOffset.UtcNow,
@@ -292,6 +374,9 @@ public sealed class EfCoreCryptoTransferIdempotencyStore : ICryptoTransferIdempo
                 idempotencyKey,
                 RequestFingerprint: string.Empty,
                 TotalDebit: receipt.TotalDebit,
+                DestinationAddress: string.Empty,
+                Amount: 0m,
+                NetworkFee: 0m,
                 CreatedAtUtc: DateTimeOffset.MinValue,
                 LastUpdatedAtUtc: DateTimeOffset.MinValue),
             receipt,
@@ -347,6 +432,9 @@ public sealed class EfCoreCryptoTransferIdempotencyStore : ICryptoTransferIdempo
                 idempotencyKey,
                 RequestFingerprint: string.Empty,
                 TotalDebit: 0m,
+                DestinationAddress: string.Empty,
+                Amount: 0m,
+                NetworkFee: 0m,
                 CreatedAtUtc: DateTimeOffset.MinValue,
                 LastUpdatedAtUtc: DateTimeOffset.MinValue),
             cancellationToken);
@@ -388,8 +476,6 @@ public sealed class EfCoreCryptoTransferIdempotencyStore : ICryptoTransferIdempo
                 return;
             }
 
-            await using var context = await dbContextFactory.CreateDbContextAsync(cancellationToken);
-            await context.Database.MigrateAsync(cancellationToken);
             isInitialized = true;
         }
         finally

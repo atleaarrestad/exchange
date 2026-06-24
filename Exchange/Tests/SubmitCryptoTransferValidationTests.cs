@@ -12,9 +12,7 @@ public sealed class SubmitCryptoTransferValidationTests
     public void Validator_WithValidCommand_DoesNotThrow()
     {
         var validator = new SubmitCryptoTransferCommandValidator();
-        var command = CreateValidCommand();
-
-        validator.Validate(command);
+        validator.Validate(CreateValidCommand());
     }
 
     [TestMethod]
@@ -23,7 +21,7 @@ public sealed class SubmitCryptoTransferValidationTests
         var validator = new SubmitCryptoTransferCommandValidator();
         var command = new SubmitCryptoTransferCommand(
             "",
-            "%%%",
+            "%%%invalid-account",
             "abc",
             "DOGE",
             -1m,
@@ -40,151 +38,78 @@ public sealed class SubmitCryptoTransferValidationTests
     }
 
     [TestMethod]
-    public async Task Service_WithInvalidCommand_DoesNotCallGateway()
+    public async Task Service_WithSameIdempotencyKey_ReturnsPendingReceiptAndReservesOnce()
     {
-        var gateway = new TrackingGateway();
         var fundsReservationGateway = new TrackingFundsReservationGateway();
         var validator = new SubmitCryptoTransferCommandValidator();
         var idempotencyStore = new InMemoryIdempotencyStore();
-        var service = new CryptoTransferService(gateway, fundsReservationGateway, idempotencyStore, validator);
-        var command = new SubmitCryptoTransferCommand(
-            "",
-            "account-1",
-            "bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kygt080",
-            "BTC",
-            1m,
-            0.1m);
-
-        await Assert.ThrowsExactlyAsync<ApplicationValidationException>(() => service.SubmitAsync(command));
-        Assert.IsFalse(gateway.WasCalled);
-    }
-
-    [TestMethod]
-    public async Task Service_WithSameIdempotencyKey_CallsGatewayOnceAndReturnsSameReceipt()
-    {
-        var gateway = new TrackingGateway();
-        var fundsReservationGateway = new TrackingFundsReservationGateway();
-        var validator = new SubmitCryptoTransferCommandValidator();
-        var idempotencyStore = new InMemoryIdempotencyStore();
-        var service = new CryptoTransferService(gateway, fundsReservationGateway, idempotencyStore, validator);
+        var service = new CryptoTransferService(fundsReservationGateway, idempotencyStore, validator);
         var command = CreateValidCommand();
 
         var first = await service.SubmitAsync(command);
         var second = await service.SubmitAsync(command);
 
-        Assert.AreEqual(1, gateway.CallCount);
+        Assert.AreEqual(CryptoTransferReceiptStatus.Pending, first.Status);
+        Assert.AreEqual(CryptoTransferReceiptStatus.Pending, second.Status);
         Assert.AreEqual(first.TransferId, second.TransferId);
-        Assert.AreEqual(first.GatewayTransactionId, second.GatewayTransactionId);
-        Assert.AreEqual(first.TotalDebit, second.TotalDebit);
         Assert.AreEqual(1, fundsReservationGateway.ReserveCallCount);
     }
 
     [TestMethod]
-    public async Task Service_WithSameIdempotencyKeyAcrossAssets_CallsGatewayPerAsset()
+    public async Task Service_WithSameIdempotencyKeyAcrossAssets_ReservesPerAsset()
     {
-        var gateway = new TrackingGateway();
         var fundsReservationGateway = new TrackingFundsReservationGateway();
         var validator = new SubmitCryptoTransferCommandValidator();
         var idempotencyStore = new InMemoryIdempotencyStore();
-        var service = new CryptoTransferService(gateway, fundsReservationGateway, idempotencyStore, validator);
+        var service = new CryptoTransferService(fundsReservationGateway, idempotencyStore, validator);
 
-        var btcCommand = CreateValidCommand();
-        var ethCommand = btcCommand with { AssetSymbol = AssetSymbol.Ether.Value };
+        await service.SubmitAsync(CreateValidCommand());
+        await service.SubmitAsync(CreateValidCommand() with { AssetSymbol = AssetSymbol.Ether.Value });
 
-        await service.SubmitAsync(btcCommand);
-        await service.SubmitAsync(ethCommand);
-
-        Assert.AreEqual(2, gateway.CallCount);
+        Assert.AreEqual(2, fundsReservationGateway.ReserveCallCount);
     }
 
     [TestMethod]
     public async Task Service_WithSameIdempotencyKeyAndDifferentAmount_ThrowsConflictException()
     {
-        var gateway = new TrackingGateway();
         var fundsReservationGateway = new TrackingFundsReservationGateway();
         var validator = new SubmitCryptoTransferCommandValidator();
         var idempotencyStore = new InMemoryIdempotencyStore();
-        var service = new CryptoTransferService(gateway, fundsReservationGateway, idempotencyStore, validator);
+        var service = new CryptoTransferService(fundsReservationGateway, idempotencyStore, validator);
 
-        var firstCommand = CreateValidCommand();
-        var secondCommand = firstCommand with { Amount = 0.75m };
-
-        _ = await service.SubmitAsync(firstCommand);
+        _ = await service.SubmitAsync(CreateValidCommand());
 
         await Assert.ThrowsExactlyAsync<IdempotencyKeyConflictException>(() =>
-            service.SubmitAsync(secondCommand));
+            service.SubmitAsync(CreateValidCommand() with { Amount = 0.75m }));
     }
 
     [TestMethod]
-    public void Validator_WithUnsupportedAsset_ThrowsValidationException()
+    public async Task Service_WithInsufficientFunds_ReleasesPendingRecordAndThrows()
     {
-        var validator = new SubmitCryptoTransferCommandValidator();
-        var command = CreateValidCommand() with { AssetSymbol = "USDT" };
-
-        var exception = Assert.ThrowsExactly<ApplicationValidationException>(() => validator.Validate(command));
-
-        Assert.IsTrue(exception.Errors.ContainsKey(nameof(SubmitCryptoTransferCommand.AssetSymbol)));
-    }
-
-    [TestMethod]
-    public async Task Service_WithInsufficientFunds_DoesNotCallGateway()
-    {
-        var gateway = new TrackingGateway();
         var fundsReservationGateway = new TrackingFundsReservationGateway
         {
             ThrowInsufficientFunds = true
         };
         var validator = new SubmitCryptoTransferCommandValidator();
         var idempotencyStore = new InMemoryIdempotencyStore();
-        var service = new CryptoTransferService(gateway, fundsReservationGateway, idempotencyStore, validator);
+        var service = new CryptoTransferService(fundsReservationGateway, idempotencyStore, validator);
 
         await Assert.ThrowsExactlyAsync<InsufficientFundsException>(() => service.SubmitAsync(CreateValidCommand()));
 
-        Assert.IsFalse(gateway.WasCalled);
+        Assert.AreEqual(1, fundsReservationGateway.ReserveCallCount);
+        Assert.AreEqual(1, idempotencyStore.ReleaseCallCount);
     }
 
     [TestMethod]
-    public async Task Service_WithUnconfiguredGateway_ReleasesReservationAndThrows()
+    public async Task Service_WithUnsupportedAsset_ThrowsValidationException()
     {
-        var gateway = new TrackingGateway
-        {
-            ThrowDependencyNotConfigured = true
-        };
         var fundsReservationGateway = new TrackingFundsReservationGateway();
         var validator = new SubmitCryptoTransferCommandValidator();
         var idempotencyStore = new InMemoryIdempotencyStore();
-        var service = new CryptoTransferService(gateway, fundsReservationGateway, idempotencyStore, validator);
+        var service = new CryptoTransferService(fundsReservationGateway, idempotencyStore, validator);
 
-        await Assert.ThrowsExactlyAsync<ExternalDependencyNotConfiguredException>(() => service.SubmitAsync(CreateValidCommand()));
-
-        Assert.AreEqual(1, fundsReservationGateway.ReserveCallCount);
-        Assert.AreEqual(1, fundsReservationGateway.ReleaseCallCount);
-    }
-
-    [TestMethod]
-    public async Task Service_WhenCallerCancellationOccursAfterStart_CompletesAndCommitsReservation()
-    {
-        var gateway = new TrackingGateway
-        {
-            SubmitDelay = TimeSpan.FromMilliseconds(100)
-        };
-        var fundsReservationGateway = new TrackingFundsReservationGateway();
-        var validator = new SubmitCryptoTransferCommandValidator();
-        var idempotencyStore = new InMemoryIdempotencyStore();
-        var service = new CryptoTransferService(gateway, fundsReservationGateway, idempotencyStore, validator);
-        using var cancellationTokenSource = new CancellationTokenSource();
-
-        var submitTask = service.SubmitAsync(CreateValidCommand(), cancellationTokenSource.Token);
-        await Task.Delay(20);
-        cancellationTokenSource.Cancel();
-
-        var receipt = await submitTask;
-
-        Assert.AreEqual("gateway-1", receipt.GatewayTransactionId);
-        Assert.AreEqual(1, gateway.CallCount);
-        Assert.AreEqual(1, fundsReservationGateway.ReserveCallCount);
-        Assert.AreEqual(1, fundsReservationGateway.CommitCallCount);
-        Assert.AreEqual(0, fundsReservationGateway.ReleaseCallCount);
+        await Assert.ThrowsExactlyAsync<ApplicationValidationException>(() =>
+            service.SubmitAsync(CreateValidCommand() with { AssetSymbol = "USDT" }));
     }
 
     private static SubmitCryptoTransferCommand CreateValidCommand()
@@ -198,44 +123,42 @@ public sealed class SubmitCryptoTransferValidationTests
             0.001m);
     }
 
-    private sealed class TrackingGateway : IBlockchainTransferGateway
+    private sealed class InMemoryIdempotencyStore : ICryptoTransferIdempotencyStore
     {
-        public bool ThrowDependencyNotConfigured { get; init; }
-        public TimeSpan SubmitDelay { get; init; } = TimeSpan.Zero;
-        public bool WasCalled { get; private set; }
-        public int CallCount { get; private set; }
+        private readonly Dictionary<(string SourceAccountId, AssetSymbol AssetSymbol, string IdempotencyKey), (string RequestFingerprint, bool Completed, CryptoTransferReceipt? Receipt)> entries = new();
+        public int ReleaseCallCount { get; private set; }
 
-        public async Task<BlockchainTransferResult> SubmitAsync(BlockchainTransferRequest request, CancellationToken cancellationToken = default)
-        {
-            WasCalled = true;
-            CallCount++;
-            if (ThrowDependencyNotConfigured)
-            {
-                throw new ExternalDependencyNotConfiguredException("simulated missing gateway");
-            }
-
-            if (SubmitDelay > TimeSpan.Zero)
-            {
-                await Task.Delay(SubmitDelay, CancellationToken.None);
-            }
-
-            return new BlockchainTransferResult("gateway-1", DateTimeOffset.UtcNow);
-        }
-
-        public Task<BlockchainTransferStatus> GetTransferStatusAsync(
+        public Task<CryptoTransferIdempotencyRegistration> RegisterPendingAsync(
             string sourceAccountId,
             AssetSymbol assetSymbol,
             string idempotencyKey,
+            string requestFingerprint,
+            decimal totalDebit,
+            string destinationAddress,
+            decimal amount,
+            decimal networkFee,
             CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            return Task.FromResult(new BlockchainTransferStatus(BlockchainTransferStatusKind.Unknown));
-        }
-    }
+            var key = (sourceAccountId.Trim(), assetSymbol, idempotencyKey.Trim());
+            var normalizedFingerprint = requestFingerprint.Trim();
 
-    private sealed class InMemoryIdempotencyStore : ICryptoTransferIdempotencyStore
-    {
-        private readonly Dictionary<(string SourceAccountId, AssetSymbol AssetSymbol, string IdempotencyKey), (string RequestFingerprint, CryptoTransferReceipt Receipt)> receipts = new();
+            if (entries.TryGetValue(key, out var existing))
+            {
+                if (!string.Equals(existing.RequestFingerprint, normalizedFingerprint, StringComparison.Ordinal))
+                {
+                    throw new IdempotencyKeyConflictException(
+                        $"Idempotency key '{key.Item3}' was already used with a different transfer request.");
+                }
+
+                return Task.FromResult(new CryptoTransferIdempotencyRegistration(
+                    CreatedPending: false,
+                    CompletedReceipt: existing.Completed ? existing.Receipt : null));
+            }
+
+            entries[key] = (normalizedFingerprint, Completed: false, Receipt: null);
+            return Task.FromResult(new CryptoTransferIdempotencyRegistration(CreatedPending: true, CompletedReceipt: null));
+        }
 
         public Task<CryptoTransferReceipt> ExecuteOnceAsync(
             string sourceAccountId,
@@ -246,24 +169,8 @@ public sealed class SubmitCryptoTransferValidationTests
             Func<CancellationToken, Task<CryptoTransferReceipt>> transferFactory,
             CancellationToken cancellationToken = default)
         {
-            var key = (
-                SourceAccountId: sourceAccountId.Trim(),
-                AssetSymbol: assetSymbol,
-                IdempotencyKey: idempotencyKey.Trim());
-            var normalizedRequestFingerprint = requestFingerprint.Trim();
-
-            if (receipts.TryGetValue(key, out var existing))
-            {
-                if (!string.Equals(existing.RequestFingerprint, normalizedRequestFingerprint, StringComparison.Ordinal))
-                {
-                    throw new IdempotencyKeyConflictException(
-                        $"Idempotency key '{key.IdempotencyKey}' was already used with a different transfer request.");
-                }
-
-                return Task.FromResult(existing.Receipt);
-            }
-
-            return StoreAndReturnAsync(key, normalizedRequestFingerprint, transferFactory, cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested();
+            return transferFactory(cancellationToken);
         }
 
         public Task<IReadOnlyList<PendingCryptoTransferOperation>> GetPendingOlderThanAsync(
@@ -271,7 +178,7 @@ public sealed class SubmitCryptoTransferValidationTests
             CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            return Task.FromResult<IReadOnlyList<PendingCryptoTransferOperation>>(Array.Empty<PendingCryptoTransferOperation>());
+            return Task.FromResult<IReadOnlyList<PendingCryptoTransferOperation>>([]);
         }
 
         public Task<bool> TryMarkCompletedAsync(
@@ -296,28 +203,16 @@ public sealed class SubmitCryptoTransferValidationTests
             CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            return Task.FromResult(false);
+            ReleaseCallCount++;
+            var key = (operation.SourceAccountId.Trim(), operation.AssetSymbol, operation.IdempotencyKey.Trim());
+            return Task.FromResult(entries.Remove(key));
         }
-
-        private async Task<CryptoTransferReceipt> StoreAndReturnAsync(
-            (string SourceAccountId, AssetSymbol AssetSymbol, string IdempotencyKey) key,
-            string requestFingerprint,
-            Func<CancellationToken, Task<CryptoTransferReceipt>> transferFactory,
-            CancellationToken cancellationToken)
-        {
-            var receipt = await transferFactory(cancellationToken);
-            receipts[key] = (requestFingerprint, receipt);
-            return receipt;
-        }
-
     }
 
     private sealed class TrackingFundsReservationGateway : ICryptoTransferFundsReservationGateway
     {
         public bool ThrowInsufficientFunds { get; init; }
         public int ReserveCallCount { get; private set; }
-        public int CommitCallCount { get; private set; }
-        public int ReleaseCallCount { get; private set; }
 
         public Task ReserveAsync(
             string sourceAccountId,
@@ -343,7 +238,6 @@ public sealed class SubmitCryptoTransferValidationTests
             CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            CommitCallCount++;
             return Task.CompletedTask;
         }
 
@@ -354,7 +248,6 @@ public sealed class SubmitCryptoTransferValidationTests
             CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            ReleaseCallCount++;
             return Task.CompletedTask;
         }
     }

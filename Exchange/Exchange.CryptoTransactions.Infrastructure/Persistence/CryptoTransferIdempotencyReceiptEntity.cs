@@ -7,6 +7,9 @@ public sealed class CryptoTransferIdempotencyReceiptEntity
     public required string IdempotencyKey { get; set; }
     public required string RequestFingerprint { get; set; }
     public decimal TotalDebit { get; set; }
+    public required string DestinationAddress { get; set; }
+    public decimal Amount { get; set; }
+    public decimal NetworkFee { get; set; }
     public required string ReceiptJson { get; set; }
     public DateTimeOffset CreatedAtUtc { get; set; }
     public DateTimeOffset LastUpdatedAtUtc { get; set; }

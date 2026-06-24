@@ -78,6 +78,14 @@ public sealed class ApiExceptionMappingMiddleware(
                 "Quote execution rejected",
                 exception.Message);
         }
+        catch (ExternalHedgeExecutionUnavailableException exception)
+        {
+            await WriteProblemAsync(
+                context,
+                StatusCodes.Status503ServiceUnavailable,
+                "External hedge execution unavailable",
+                exception.Message);
+        }
         catch (ExternalDependencyNotConfiguredException exception)
         {
             await WriteProblemAsync(
