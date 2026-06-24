@@ -2,12 +2,15 @@ using MassTransit;
 using Exchange.Configuration;
 using Exchange.BrokeredBuys.Messaging;
 using Exchange.CryptoTransactions.Infrastructure.DependencyInjection;
+using Exchange.CryptoTransactions.Infrastructure.Persistence;
 using Exchange.CryptoTransactions.Infrastructure.Messaging;
 using Exchange.CryptoTransactions.Infrastructure.Simulation.DependencyInjection;
 using Exchange.FiatTransactions.Infrastructure.DependencyInjection;
 using Exchange.Infrastructure.Caching;
 using Exchange.Infrastructure.Messaging;
 using Exchange.Middleware;
+using MassTransit.EntityFrameworkCoreIntegration;
+using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -22,6 +25,12 @@ builder.Services.AddCryptoTransactionsInfrastructure(
     includeBootstrapWorker: false);
 builder.Services.AddFiatTransactionsInfrastructure(builder.Configuration);
 var messagingOptions = MessagingTransportOptions.FromConfiguration(builder.Configuration);
+var cryptoTransactionsConnectionString = builder.Configuration.GetValue<string>(Exchange.CryptoTransactions.Infrastructure.DependencyInjection.InfrastructureConfigurationKeys.IdempotencyConnectionString)
+    ?? Exchange.CryptoTransactions.Infrastructure.DependencyInjection.InfrastructureConfigurationKeys.DefaultIdempotencyConnectionString;
+builder.Services.AddDbContext<CryptoTransactionsDbContext>(options =>
+{
+    options.UseNpgsql(cryptoTransactionsConnectionString);
+});
 
 var isSimulationEnabled = builder.Configuration.GetSection(ConfigurationKeys.SimulationSection)
     .GetValue<bool>(ConfigurationKeys.Enabled);
@@ -36,7 +45,12 @@ builder.Services.AddMassTransit(configurator =>
     configurator.SetKebabCaseEndpointNameFormatter();
     configurator.AddSettingsChangeConsumers();
     configurator.AddSagaStateMachine<BrokeredFiatCryptoBuyStateMachine, BrokeredFiatCryptoBuySagaState>()
-        .InMemoryRepository();
+        .EntityFrameworkRepository(repositoryConfigurator =>
+        {
+            repositoryConfigurator.ConcurrencyMode = ConcurrencyMode.Pessimistic;
+            repositoryConfigurator.ExistingDbContext<CryptoTransactionsDbContext>();
+            repositoryConfigurator.UsePostgres();
+        });
     configurator.AddConsumer<ReserveFiatForBrokeredBuyConsumer>();
     configurator.AddConsumer<BookCryptoForBrokeredBuyConsumer>();
     configurator.AddConsumer<CaptureFiatForBrokeredBuyConsumer>();

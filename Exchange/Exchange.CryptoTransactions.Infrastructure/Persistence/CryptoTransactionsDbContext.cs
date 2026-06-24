@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Exchange.BrokeredBuys.Messaging;
 using Exchange.Infrastructure.Scheduling.Persistence;
 
 namespace Exchange.CryptoTransactions.Infrastructure.Persistence;
@@ -21,6 +22,8 @@ public sealed class CryptoTransactionsDbContext(DbContextOptions<CryptoTransacti
     public DbSet<ExternalHedgeExecutionRecordEntity> ExternalHedgeExecutionRecords => Set<ExternalHedgeExecutionRecordEntity>();
     public DbSet<CryptoLedgerTransactionEntity> CryptoLedgerTransactions => Set<CryptoLedgerTransactionEntity>();
     public DbSet<CryptoLedgerEntryEntity> CryptoLedgerEntries => Set<CryptoLedgerEntryEntity>();
+    public DbSet<BrokeredCryptoBuyQuoteEntity> BrokeredCryptoBuyQuotes => Set<BrokeredCryptoBuyQuoteEntity>();
+    public DbSet<BrokeredFiatCryptoBuySagaState> BrokeredFiatCryptoBuySagaStates => Set<BrokeredFiatCryptoBuySagaState>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -326,5 +329,45 @@ public sealed class CryptoTransactionsDbContext(DbContextOptions<CryptoTransacti
             .WithMany()
             .HasForeignKey(entity => entity.TransactionId)
             .OnDelete(DeleteBehavior.Cascade);
+
+        var brokeredBuyQuotes = modelBuilder.Entity<BrokeredCryptoBuyQuoteEntity>();
+        brokeredBuyQuotes.ToTable("brokered_crypto_buy_quotes");
+        brokeredBuyQuotes.HasKey(entity => entity.Id);
+        brokeredBuyQuotes.Property(entity => entity.Id).HasColumnName("id");
+        brokeredBuyQuotes.Property(entity => entity.CustomerAccountId).HasColumnName("customer_account_id").HasMaxLength(64);
+        brokeredBuyQuotes.Property(entity => entity.AssetSymbol).HasColumnName("asset_symbol").HasMaxLength(16);
+        brokeredBuyQuotes.Property(entity => entity.QuoteCurrency).HasColumnName("quote_currency").HasMaxLength(16);
+        brokeredBuyQuotes.Property(entity => entity.Quantity).HasColumnName("quantity");
+        brokeredBuyQuotes.Property(entity => entity.InternalFillQuantity).HasColumnName("internal_fill_quantity");
+        brokeredBuyQuotes.Property(entity => entity.ExternalHedgeQuantity).HasColumnName("external_hedge_quantity");
+        brokeredBuyQuotes.Property(entity => entity.UnitPrice).HasColumnName("unit_price");
+        brokeredBuyQuotes.Property(entity => entity.TotalCost).HasColumnName("total_cost");
+        brokeredBuyQuotes.Property(entity => entity.MarketPriceObservedAtUtc).HasColumnName("market_price_observed_at_utc");
+        brokeredBuyQuotes.Property(entity => entity.QuotedAtUtc).HasColumnName("quoted_at_utc");
+        brokeredBuyQuotes.Property(entity => entity.ExpiresAtUtc).HasColumnName("expires_at_utc");
+        brokeredBuyQuotes.Property(entity => entity.RequiresExternalHedge).HasColumnName("requires_external_hedge");
+        brokeredBuyQuotes.Property(entity => entity.PriceSource).HasColumnName("price_source").HasMaxLength(64);
+        brokeredBuyQuotes.Property(entity => entity.CreatedAtUtc).HasColumnName("created_at_utc");
+        brokeredBuyQuotes.HasIndex(entity => entity.ExpiresAtUtc)
+            .HasDatabaseName("ix_brokered_crypto_buy_quotes_expires_at");
+
+        var brokeredBuySagaStates = modelBuilder.Entity<BrokeredFiatCryptoBuySagaState>();
+        brokeredBuySagaStates.ToTable("brokered_fiat_crypto_buy_saga_states");
+        brokeredBuySagaStates.HasKey(entity => entity.CorrelationId);
+        brokeredBuySagaStates.Property(entity => entity.CorrelationId).HasColumnName("correlation_id");
+        brokeredBuySagaStates.Property(entity => entity.CurrentState).HasColumnName("current_state").HasMaxLength(64);
+        brokeredBuySagaStates.Property(entity => entity.QuoteId).HasColumnName("quote_id");
+        brokeredBuySagaStates.Property(entity => entity.ClientOrderId).HasColumnName("client_order_id").HasMaxLength(128);
+        brokeredBuySagaStates.Property(entity => entity.CustomerAccountId).HasColumnName("customer_account_id").HasMaxLength(64);
+        brokeredBuySagaStates.Property(entity => entity.AssetSymbol).HasColumnName("asset_symbol").HasMaxLength(16);
+        brokeredBuySagaStates.Property(entity => entity.Quantity).HasColumnName("quantity");
+        brokeredBuySagaStates.Property(entity => entity.QuoteCurrency).HasColumnName("quote_currency").HasMaxLength(16);
+        brokeredBuySagaStates.Property(entity => entity.MaxUnitPrice).HasColumnName("max_unit_price");
+        brokeredBuySagaStates.Property(entity => entity.MaxTotalCost).HasColumnName("max_total_cost");
+        brokeredBuySagaStates.Property(entity => entity.ReservedAmount).HasColumnName("reserved_amount");
+        brokeredBuySagaStates.Property(entity => entity.CapturedAmount).HasColumnName("captured_amount");
+        brokeredBuySagaStates.Property(entity => entity.FailureReason).HasColumnName("failure_reason");
+        brokeredBuySagaStates.HasIndex(entity => new { entity.CustomerAccountId, entity.ClientOrderId })
+            .HasDatabaseName("ix_brokered_fiat_crypto_buy_saga_states_customer_order");
     }
 }
