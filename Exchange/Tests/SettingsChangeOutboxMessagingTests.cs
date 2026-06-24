@@ -1,6 +1,8 @@
 using System.Text.Json;
+using Cronos;
 using Exchange.CryptoTransactions.Application.Messaging;
 using Exchange.CryptoTransactions.Infrastructure.Messaging;
+using Exchange.Infrastructure.Scheduling;
 using Microsoft.Extensions.Configuration;
 
 namespace Tests;
@@ -62,6 +64,34 @@ public sealed class SettingsChangeOutboxMessagingTests
 
         Assert.ThrowsExactly<ArgumentOutOfRangeException>(() =>
             SettingsChangeOutboxPublisherOptions.FromConfiguration(configuration));
+    }
+
+    [TestMethod]
+    public void OutboxArchivalOptions_FromConfiguration_ThrowsWhenCronExpressionIsInvalid()
+    {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["CryptoTransactions:CronJobs:SettingsChangeOutboxArchival:CronExpression"] = "invalid cron"
+            })
+            .Build();
+
+        Assert.ThrowsExactly<CronFormatException>(() =>
+            SettingsChangeOutboxArchivalOptions.FromConfiguration(configuration));
+    }
+
+    [TestMethod]
+    public void CronJobRunnerOptions_FromConfiguration_ThrowsWhenPollIntervalIsInvalid()
+    {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Scheduling:CronJobRunner:PollIntervalSeconds"] = "0"
+            })
+            .Build();
+
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(() =>
+            CronJobRunnerOptions.FromConfiguration(configuration, SchedulingConfigurationKeys.CronJobRunnerSection));
     }
 
     private sealed record UnknownSettingsPayload(Guid ProfileId);

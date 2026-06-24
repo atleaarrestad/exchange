@@ -13,7 +13,9 @@ export class CryptoGatewayResilienceSettingsService {
   private readonly apiClient = inject(AdminApiClientService);
 
   listProfiles(): Promise<readonly CryptoGatewayResilienceSettingsProfile[]> {
-    return firstValueFrom(this.apiClient.get<readonly CryptoGatewayResilienceSettingsProfile[]>(GATEWAY_RESILIENCE_SETTINGS_ENDPOINT));
+    return firstValueFrom(this.apiClient.get<unknown>(GATEWAY_RESILIENCE_SETTINGS_ENDPOINT)).then((response) =>
+      ensureArrayResponse<CryptoGatewayResilienceSettingsProfile>(response, GATEWAY_RESILIENCE_SETTINGS_ENDPOINT)
+    );
   }
 
   createProfile(request: UpsertCryptoGatewayResilienceSettingsRequest): Promise<CryptoGatewayResilienceSettingsProfile> {
@@ -40,4 +42,12 @@ export class CryptoGatewayResilienceSettingsService {
   async deleteProfile(id: string): Promise<void> {
     await firstValueFrom(this.apiClient.delete<void>(`${GATEWAY_RESILIENCE_SETTINGS_ENDPOINT}/${id}`));
   }
+}
+
+function ensureArrayResponse<T>(response: unknown, endpoint: string): readonly T[] {
+  if (Array.isArray(response)) {
+    return response as readonly T[];
+  }
+
+  throw new Error(`Unexpected response from ${endpoint}: expected an array.`);
 }

@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Exchange.Infrastructure.Scheduling.Persistence;
 
 namespace Exchange.CryptoTransactions.Infrastructure.Persistence;
 
@@ -9,6 +10,9 @@ public sealed class CryptoTransactionsDbContext(DbContextOptions<CryptoTransacti
     public DbSet<CryptoGatewaySettingsProfileEntity> CryptoGatewaySettingsProfiles => Set<CryptoGatewaySettingsProfileEntity>();
     public DbSet<CryptoGatewayResilienceSettingsProfileEntity> CryptoGatewayResilienceSettingsProfiles => Set<CryptoGatewayResilienceSettingsProfileEntity>();
     public DbSet<SettingsChangeOutboxEntryEntity> SettingsChangeOutboxEntries => Set<SettingsChangeOutboxEntryEntity>();
+    public DbSet<SettingsChangeOutboxArchiveEntryEntity> SettingsChangeOutboxArchiveEntries => Set<SettingsChangeOutboxArchiveEntryEntity>();
+    public DbSet<CronJobStateEntity> CronJobStates => Set<CronJobStateEntity>();
+    public DbSet<CronJobExecutionRecordEntity> CronJobExecutionRecords => Set<CronJobExecutionRecordEntity>();
     public DbSet<ExternalHedgeBatchEntryEntity> ExternalHedgeBatchEntries => Set<ExternalHedgeBatchEntryEntity>();
     public DbSet<BackgroundWorkerHeartbeatEntity> BackgroundWorkerHeartbeats => Set<BackgroundWorkerHeartbeatEntity>();
 
@@ -154,6 +158,51 @@ public sealed class CryptoTransactionsDbContext(DbContextOptions<CryptoTransacti
             .HasDatabaseName("ix_settings_change_outbox_entries_publish_state");
         outboxEntries.HasIndex(entity => new { entity.PublishedAtUtc, entity.LeaseExpiresAtUtc, entity.CreatedAtUtc })
             .HasDatabaseName("ix_settings_change_outbox_entries_lease_state");
+
+        var outboxArchiveEntries = modelBuilder.Entity<SettingsChangeOutboxArchiveEntryEntity>();
+        outboxArchiveEntries.ToTable("settings_change_outbox_archive_entries");
+        outboxArchiveEntries.HasKey(entity => entity.Id);
+        outboxArchiveEntries.Property(entity => entity.Id).HasColumnName("id");
+        outboxArchiveEntries.Property(entity => entity.MessageType).HasColumnName("message_type").HasMaxLength(200);
+        outboxArchiveEntries.Property(entity => entity.PayloadJson).HasColumnName("payload_json");
+        outboxArchiveEntries.Property(entity => entity.CreatedAtUtc).HasColumnName("created_at_utc");
+        outboxArchiveEntries.Property(entity => entity.PublishedAtUtc).HasColumnName("published_at_utc");
+        outboxArchiveEntries.Property(entity => entity.PublishAttemptCount).HasColumnName("publish_attempt_count");
+        outboxArchiveEntries.Property(entity => entity.ArchivedAtUtc).HasColumnName("archived_at_utc");
+        outboxArchiveEntries.HasIndex(entity => new { entity.PublishedAtUtc, entity.ArchivedAtUtc })
+            .HasDatabaseName("ix_settings_change_outbox_archive_entries_published_archived");
+
+        var cronJobStates = modelBuilder.Entity<CronJobStateEntity>();
+        cronJobStates.ToTable("cron_job_states");
+        cronJobStates.HasKey(entity => entity.JobName);
+        cronJobStates.Property(entity => entity.JobName).HasColumnName("job_name").HasMaxLength(128);
+        cronJobStates.Property(entity => entity.CronExpression).HasColumnName("cron_expression").HasMaxLength(64);
+        cronJobStates.Property(entity => entity.IsEnabled).HasColumnName("is_enabled");
+        cronJobStates.Property(entity => entity.NextRunAtUtc).HasColumnName("next_run_at_utc");
+        cronJobStates.Property(entity => entity.LastStartedAtUtc).HasColumnName("last_started_at_utc");
+        cronJobStates.Property(entity => entity.LastCompletedAtUtc).HasColumnName("last_completed_at_utc");
+        cronJobStates.Property(entity => entity.LastRunStatus).HasColumnName("last_run_status").HasConversion<int?>();
+        cronJobStates.Property(entity => entity.LastError).HasColumnName("last_error");
+        cronJobStates.Property(entity => entity.LeaseOwnerId).HasColumnName("lease_owner_id").HasMaxLength(128);
+        cronJobStates.Property(entity => entity.LeaseExpiresAtUtc).HasColumnName("lease_expires_at_utc");
+        cronJobStates.Property(entity => entity.LeaseToken).HasColumnName("lease_token");
+        cronJobStates.HasIndex(entity => new { entity.NextRunAtUtc, entity.LeaseExpiresAtUtc })
+            .HasDatabaseName("ix_cron_job_states_due_lease");
+
+        var cronJobExecutionRecords = modelBuilder.Entity<CronJobExecutionRecordEntity>();
+        cronJobExecutionRecords.ToTable("cron_job_execution_records");
+        cronJobExecutionRecords.HasKey(entity => entity.Id);
+        cronJobExecutionRecords.Property(entity => entity.Id).HasColumnName("id");
+        cronJobExecutionRecords.Property(entity => entity.JobName).HasColumnName("job_name").HasMaxLength(128);
+        cronJobExecutionRecords.Property(entity => entity.RunnerId).HasColumnName("runner_id").HasMaxLength(128);
+        cronJobExecutionRecords.Property(entity => entity.ScheduledAtUtc).HasColumnName("scheduled_at_utc");
+        cronJobExecutionRecords.Property(entity => entity.StartedAtUtc).HasColumnName("started_at_utc");
+        cronJobExecutionRecords.Property(entity => entity.CompletedAtUtc).HasColumnName("completed_at_utc");
+        cronJobExecutionRecords.Property(entity => entity.Status).HasColumnName("status").HasConversion<int>();
+        cronJobExecutionRecords.Property(entity => entity.ResultMessage).HasColumnName("result_message");
+        cronJobExecutionRecords.Property(entity => entity.Error).HasColumnName("error");
+        cronJobExecutionRecords.HasIndex(entity => new { entity.JobName, entity.StartedAtUtc })
+            .HasDatabaseName("ix_cron_job_execution_records_job_started");
 
         var externalHedgeBatchEntries = modelBuilder.Entity<ExternalHedgeBatchEntryEntity>();
         externalHedgeBatchEntries.ToTable("external_hedge_batch_entries");

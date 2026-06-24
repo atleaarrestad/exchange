@@ -1,0 +1,78 @@
+.cron-jobs-shell {
+  padding: 1rem;
+}
+
+.page-header {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 1rem;
+}
+
+.page-header h2 {
+  margin: 0;
+}
+
+.jobs-grid {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+}
+
+.jobs-tabs {
+  margin-bottom: 1rem;
+}
+
+.meta-row {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.meta-row--primary {
+  margin-bottom: 0.5rem;
+}
+
+.info-pill,
+.status-pill {
+  border: 1px solid #d0d7de;
+  border-radius: 999px;
+  font-size: 0.85rem;
+}
+
+.status-pill {
+  border-color: #c8ccd0;
+}
+
+.status-pill--running {
+  border-color: #90caf9;
+  color: #1565c0;
+}
+
+.status-pill--error {
+  border-color: #f4b6b6;
+  color: #b71c1c;
+}
+
+.status-pill--success {
+  border-color: #a5d6a7;
+  color: #1b5e20;
+}
+
+.status {
+  margin: 0 0 0.75rem;
+}
+
+.status--running {
+  color: #1565c0;
+}
+
+.status--error {
+  color: #b71c1c;
+}
+
+.status--success {
+  color: #1b5e20;
+}

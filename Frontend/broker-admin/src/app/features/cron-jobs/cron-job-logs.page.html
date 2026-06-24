@@ -1,0 +1,42 @@
+<main class="cron-job-logs-shell">
+  <header class="page-header">
+    <h2>{{ jobName }} logs</h2>
+    <div class="header-actions">
+      <button mat-stroked-button type="button" routerLink="/cron-jobs">Back to cron jobs</button>
+      <button mat-stroked-button type="button" (click)="refresh()" [disabled]="isLoading">Refresh</button>
+    </div>
+  </header>
+
+  @if (errorMessage !== null) {
+    <p class="status status--error">{{ errorMessage }}</p>
+  }
+
+  @if (logs.length === 0) {
+    <p>No execution logs found.</p>
+  } @else {
+    <section class="logs-list">
+      @for (log of logs; track log.id) {
+        <mat-card>
+          <mat-card-content>
+            <p><strong [class]="statusClass(log.status)">{{ log.status }}</strong></p>
+            <p>Scheduled: {{ log.scheduledAtUtc | date: 'yyyy-MM-dd HH:mm:ss':'UTC' }} UTC</p>
+            <p>Started: {{ log.startedAtUtc | date: 'yyyy-MM-dd HH:mm:ss':'UTC' }} UTC</p>
+            <p>
+              Completed:
+              @if (log.completedAtUtc !== null) {
+                {{ log.completedAtUtc | date: 'yyyy-MM-dd HH:mm:ss':'UTC' }} UTC
+              } @else {
+                n/a
+              }
+            </p>
+            <p>Runner: {{ log.runnerId }}</p>
+            <p>Result: {{ log.resultMessage ?? 'No message' }}</p>
+            @if (log.error !== null) {
+              <p class="status status--error">{{ log.error }}</p>
+            }
+          </mat-card-content>
+        </mat-card>
+      }
+    </section>
+  }
+</main>

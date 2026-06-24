@@ -1,0 +1,74 @@
+<main class="cron-jobs-shell">
+  <header class="page-header">
+    <h2>Cron Jobs</h2>
+    <div class="header-actions">
+      <button mat-stroked-button type="button" (click)="refresh()" [disabled]="isLoading">Refresh</button>
+    </div>
+  </header>
+
+  @if (errorMessage !== null) {
+    <p class="status status--error">{{ errorMessage }}</p>
+  }
+  @if (successMessage !== null) {
+    <p class="status status--success">{{ successMessage }}</p>
+  }
+
+  <mat-tab-group
+    class="jobs-tabs"
+    [selectedIndex]="selectedTabIndex"
+    (selectedTabChange)="onTabChanged($event)">
+    @for (tab of jobTypeTabs; track tab.key) {
+      <mat-tab [label]="tabLabel(tab)"></mat-tab>
+    }
+  </mat-tab-group>
+
+  <section class="jobs-grid">
+    @if (displayedJobs.length === 0) {
+      <p>No cron jobs found for this type.</p>
+    }
+    @for (job of displayedJobs; track job.jobName) {
+      <mat-card>
+        <mat-card-header>
+          <mat-card-title>{{ displayNameFor(job) }}</mat-card-title>
+          <mat-card-subtitle>{{ job.jobName }} | {{ job.jobType }}</mat-card-subtitle>
+        </mat-card-header>
+
+        <mat-card-content>
+          <div class="meta-row meta-row--primary">
+            <mat-chip [class.status--success]="job.isEnabled" [class.status--error]="!job.isEnabled">
+              {{ job.isEnabled ? 'Enabled' : 'Disabled' }}
+            </mat-chip>
+            <mat-chip class="info-pill">
+              Next run {{ nextRunRelative(job.nextRunAtUtc) }} ({{ job.nextRunAtUtc | date: 'MMM d, y HH:mm:ss z' }})
+            </mat-chip>
+            <mat-chip [class]="statusPillClass(job.lastRunStatus)">
+              Last run {{ lastRunSummary(job) }}
+            </mat-chip>
+          </div>
+
+          <div class="meta-row">
+            <mat-chip class="info-pill">Timeout {{ job.timeoutSeconds }}s</mat-chip>
+            <mat-chip class="info-pill">Cron {{ job.cronExpression }}</mat-chip>
+          </div>
+
+          @if (job.lastError !== null) {
+            <p class="status status--error">{{ job.lastError }}</p>
+          }
+        </mat-card-content>
+
+        <mat-card-actions align="end">
+          <button mat-stroked-button type="button" [routerLink]="['/cron-jobs', job.jobName, 'logs']">
+            Open logs
+          </button>
+          <button
+            mat-flat-button
+            type="button"
+            (click)="runNow(job.jobName)"
+            [disabled]="!job.isEnabled || isRunInProgress(job.jobName)">
+            Run now
+          </button>
+        </mat-card-actions>
+      </mat-card>
+    }
+  </section>
+</main>

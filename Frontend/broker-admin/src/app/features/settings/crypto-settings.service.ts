@@ -10,7 +10,9 @@ export class CryptoSettingsService {
   private readonly apiClient = inject(AdminApiClientService);
 
   listProfiles(): Promise<readonly CryptoSettingsProfile[]> {
-    return firstValueFrom(this.apiClient.get<readonly CryptoSettingsProfile[]>(CRYPTO_SETTINGS_ENDPOINT));
+    return firstValueFrom(this.apiClient.get<unknown>(CRYPTO_SETTINGS_ENDPOINT)).then((response) =>
+      ensureArrayResponse<CryptoSettingsProfile>(response, CRYPTO_SETTINGS_ENDPOINT)
+    );
   }
 
   createProfile(request: UpsertCryptoSettingsRequest): Promise<CryptoSettingsProfile> {
@@ -24,4 +26,12 @@ export class CryptoSettingsService {
   async deleteProfile(id: string): Promise<void> {
     await firstValueFrom(this.apiClient.delete<void>(`${CRYPTO_SETTINGS_ENDPOINT}/${id}`));
   }
+}
+
+function ensureArrayResponse<T>(response: unknown, endpoint: string): readonly T[] {
+  if (Array.isArray(response)) {
+    return response as readonly T[];
+  }
+
+  throw new Error(`Unexpected response from ${endpoint}: expected an array.`);
 }

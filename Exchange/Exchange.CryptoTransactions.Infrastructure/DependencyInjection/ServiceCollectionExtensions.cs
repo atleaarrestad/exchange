@@ -4,7 +4,9 @@ using Exchange.CryptoTransactions.Application.Validation;
 using Exchange.CryptoTransactions.Infrastructure.Gateways;
 using Exchange.CryptoTransactions.Infrastructure.Messaging;
 using Exchange.CryptoTransactions.Infrastructure.Persistence;
+using Exchange.CryptoTransactions.Infrastructure.Scheduling;
 using Exchange.CryptoTransactions.Resilience.Gateways;
+using Exchange.Infrastructure.Scheduling;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -29,6 +31,8 @@ public static class ServiceCollectionExtensions
         var blockchainGatewayResiliencePolicyOptions = blockchainGatewayResilienceOptions.ToPolicyOptions();
         var brokeredTradingOptions = BrokeredTradingOptions.FromConfiguration(configuration);
         var settingsChangeOutboxPublisherOptions = SettingsChangeOutboxPublisherOptions.FromConfiguration(configuration);
+        var cronJobRunnerOptions = CronJobRunnerOptions.FromConfiguration(configuration, SchedulingConfigurationKeys.CronJobRunnerSection);
+        var settingsChangeOutboxArchivalOptions = SettingsChangeOutboxArchivalOptions.FromConfiguration(configuration);
         var brokeredTradingPolicy = new BrokeredTradingPolicy
         {
             QuoteTtlSeconds = brokeredTradingOptions.QuoteTtlSeconds,
@@ -50,7 +54,11 @@ public static class ServiceCollectionExtensions
         services.AddSingleton(blockchainGatewayResiliencePolicyOptions);
         services.AddSingleton(brokeredTradingOptions);
         services.AddSingleton(settingsChangeOutboxPublisherOptions);
+        services.AddSingleton(cronJobRunnerOptions);
+        services.AddSingleton(settingsChangeOutboxArchivalOptions);
         services.AddSingleton(brokeredTradingPolicy);
+        services.AddSingleton<ICronJobStateStore, EfCoreCronJobStateStore>();
+        services.AddSingleton<ICronJobsAdminService, EfCoreCronJobsAdminService>();
         services.AddSingleton<IBrokeredTradingPolicyProvider, RuntimeBrokeredTradingPolicyProvider>();
         services.AddSingleton<IKrakenGatewayOptionsProvider, RuntimeKrakenGatewayOptionsProvider>();
         services.AddSingleton<IBlockchainGatewayResiliencePolicyOptionsProvider, RuntimeBlockchainGatewayResiliencePolicyOptionsProvider>();
@@ -66,6 +74,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<ICryptoGatewaySettingsService, EfCoreCryptoGatewaySettingsService>();
         services.AddSingleton<ICryptoGatewayResilienceSettingsService, EfCoreCryptoGatewayResilienceSettingsService>();
         services.AddSingleton<ISettingsChangeOutboxPublisher, SettingsChangeOutboxPublisher>();
+        services.AddSingleton<ICronScheduledJob, SettingsChangeOutboxArchivalJob>();
         services.AddSingleton<ICryptoTransferTimeoutReconciler, CryptoTransferTimeoutReconciler>();
         services.AddSingleton<IBrokeredCryptoBuyService, BrokeredCryptoBuyService>();
         services.AddSingleton<IExternalHedgeExecutionReadinessGate, EfCoreExternalHedgeExecutionReadinessGate>();
@@ -94,6 +103,7 @@ public static class ServiceCollectionExtensions
             services.AddHostedService<CryptoTransferTimeoutReconciliationWorker>();
             services.AddHostedService<ExternalHedgeBatchExecutionWorker>();
             services.AddHostedService<SettingsChangeOutboxPublisherWorker>();
+            services.AddHostedService<CronJobRunnerWorker>();
         }
         return services;
     }

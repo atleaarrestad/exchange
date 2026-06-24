@@ -84,6 +84,31 @@ public sealed class RuntimeSettingsBootstrapWorker(
             })
             .Take(1)
             .ToListAsync(cancellationToken);
+        await context.SettingsChangeOutboxArchiveEntries
+            .AsNoTracking()
+            .Select(entity => entity.ArchivedAtUtc)
+            .Take(1)
+            .ToListAsync(cancellationToken);
+        await context.CronJobStates
+            .AsNoTracking()
+            .Select(entity => new
+            {
+                entity.JobName,
+                entity.NextRunAtUtc,
+                entity.LeaseToken
+            })
+            .Take(1)
+            .ToListAsync(cancellationToken);
+        await context.CronJobExecutionRecords
+            .AsNoTracking()
+            .Select(entity => new
+            {
+                entity.JobName,
+                entity.StartedAtUtc,
+                entity.Status
+            })
+            .Take(1)
+            .ToListAsync(cancellationToken);
         await context.ExternalHedgeBatchEntries
             .AsNoTracking()
             .Select(entity => new

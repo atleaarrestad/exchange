@@ -5,7 +5,7 @@ namespace Exchange.CryptoTransactions.Infrastructure.Messaging;
 
 public sealed record SettingsChangeOutboxPublisherOptions
 {
-    public const int DefaultPollIntervalSeconds = 2;
+    public const int DefaultPollIntervalSeconds = 10;
     public const int DefaultLeaseDurationSeconds = 30;
     public const int DefaultClaimBatchSize = 100;
     public const int DefaultMaxPublishAttempts = 10;
