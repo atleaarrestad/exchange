@@ -9,6 +9,7 @@
   <ItemGroup>
     <ProjectReference Include="..\Exchange.CryptoTransactions.Application\Exchange.CryptoTransactions.Application.csproj" />
     <ProjectReference Include="..\Exchange.CryptoTransactions.Resilience\Exchange.CryptoTransactions.Resilience.csproj" />
+    <ProjectReference Include="..\Exchange.Infrastructure\Exchange.Infrastructure.csproj" />
   </ItemGroup>
 
   <ItemGroup>

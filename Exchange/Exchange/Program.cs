@@ -4,6 +4,7 @@ using Exchange.CryptoTransactions.Infrastructure.DependencyInjection;
 using Exchange.CryptoTransactions.Infrastructure.Messaging;
 using Exchange.CryptoTransactions.Infrastructure.Simulation.DependencyInjection;
 using Exchange.Infrastructure.Caching;
+using Exchange.Infrastructure.Messaging;
 using Exchange.Middleware;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -30,9 +31,7 @@ if (isSimulationEnabled)
 builder.Services.AddMassTransit(configurator =>
 {
     configurator.SetKebabCaseEndpointNameFormatter();
-    configurator.AddConsumer<CryptoSettingsProfileChangedConsumer>();
-    configurator.AddConsumer<CryptoGatewaySettingsProfileChangedConsumer>();
-    configurator.AddConsumer<CryptoGatewayResilienceSettingsProfileChangedConsumer>();
+    configurator.AddSettingsChangeConsumers();
 
     if (messagingOptions.UseRabbitMq)
     {
@@ -46,30 +45,20 @@ builder.Services.AddMassTransit(configurator =>
                     host.Username(messagingOptions.RabbitMq.Username);
                     host.Password(messagingOptions.RabbitMq.Password);
                 });
-            cfg.ReceiveEndpoint(
-                BuildFanoutEndpointName(SettingsChangeOutboxMessageTypes.CryptoSettingsProfileChanged, messagingOptions.InstanceId),
-                endpoint => endpoint.ConfigureConsumer<CryptoSettingsProfileChangedConsumer>(context));
-            cfg.ReceiveEndpoint(
-                BuildFanoutEndpointName(SettingsChangeOutboxMessageTypes.CryptoGatewaySettingsProfileChanged, messagingOptions.InstanceId),
-                endpoint => endpoint.ConfigureConsumer<CryptoGatewaySettingsProfileChangedConsumer>(context));
-            cfg.ReceiveEndpoint(
-                BuildFanoutEndpointName(SettingsChangeOutboxMessageTypes.CryptoGatewayResilienceSettingsProfileChanged, messagingOptions.InstanceId),
-                endpoint => endpoint.ConfigureConsumer<CryptoGatewayResilienceSettingsProfileChangedConsumer>(context));
+            SettingsFanoutEndpointRegistration.ConfigureFanoutEndpoints(
+                (endpointName, configureEndpoint) => cfg.ReceiveEndpoint(endpointName, configureEndpoint),
+                CryptoSettingsChangeMassTransitRegistration.BuildFanoutSubscriptions(context),
+                messagingOptions.InstanceId);
         });
         return;
     }
 
     configurator.UsingInMemory((context, cfg) =>
     {
-        cfg.ReceiveEndpoint(
-            BuildFanoutEndpointName(SettingsChangeOutboxMessageTypes.CryptoSettingsProfileChanged, messagingOptions.InstanceId),
-            endpoint => endpoint.ConfigureConsumer<CryptoSettingsProfileChangedConsumer>(context));
-        cfg.ReceiveEndpoint(
-            BuildFanoutEndpointName(SettingsChangeOutboxMessageTypes.CryptoGatewaySettingsProfileChanged, messagingOptions.InstanceId),
-            endpoint => endpoint.ConfigureConsumer<CryptoGatewaySettingsProfileChangedConsumer>(context));
-        cfg.ReceiveEndpoint(
-            BuildFanoutEndpointName(SettingsChangeOutboxMessageTypes.CryptoGatewayResilienceSettingsProfileChanged, messagingOptions.InstanceId),
-            endpoint => endpoint.ConfigureConsumer<CryptoGatewayResilienceSettingsProfileChangedConsumer>(context));
+        SettingsFanoutEndpointRegistration.ConfigureFanoutEndpoints(
+            (endpointName, configureEndpoint) => cfg.ReceiveEndpoint(endpointName, configureEndpoint),
+            CryptoSettingsChangeMassTransitRegistration.BuildFanoutSubscriptions(context),
+            messagingOptions.InstanceId);
     });
 });
 // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
@@ -91,8 +80,3 @@ app.UseAuthorization();
 app.MapControllers();
 
 app.Run();
-
-static string BuildFanoutEndpointName(string messageTopic, string instanceId)
-{
-    return $"{messageTopic}-subscriber-{instanceId}";
-}

@@ -6,7 +6,6 @@ using Exchange.CryptoTransactions.Infrastructure.Messaging;
 using Exchange.CryptoTransactions.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
-using System.Text.Json;
 
 namespace Exchange.CryptoTransactions.Infrastructure.Gateways;
 
@@ -84,7 +83,7 @@ public sealed class EfCoreCryptoSettingsService(
 
         await using var context = await dbContextFactory.CreateDbContextAsync(cancellationToken);
         context.CryptoSettingsProfiles.Add(entity);
-        context.SettingsChangeOutboxEntries.Add(CreateOutboxEntry(
+        context.SettingsChangeOutboxEntries.Add(SettingsChangeOutboxEntryFactory.Create(
             SettingsChangeOutboxMessageTypes.CryptoSettingsProfileChanged,
             new CryptoSettingsProfileChangedIntegrationEvent(entity.Id, SettingsProfileChangeType.Created, DateTimeOffset.UtcNow)));
         await context.SaveChangesAsync(cancellationToken);
@@ -131,7 +130,7 @@ public sealed class EfCoreCryptoSettingsService(
         entity.SimulationDefaultEtherAvailableBalance = command.SimulationDefaultEtherAvailableBalance;
         entity.UpdatedAtUtc = DateTimeOffset.UtcNow;
 
-        context.SettingsChangeOutboxEntries.Add(CreateOutboxEntry(
+        context.SettingsChangeOutboxEntries.Add(SettingsChangeOutboxEntryFactory.Create(
             SettingsChangeOutboxMessageTypes.CryptoSettingsProfileChanged,
             new CryptoSettingsProfileChangedIntegrationEvent(entity.Id, SettingsProfileChangeType.Updated, DateTimeOffset.UtcNow)));
         await context.SaveChangesAsync(cancellationToken);
@@ -152,7 +151,7 @@ public sealed class EfCoreCryptoSettingsService(
         }
 
         context.CryptoSettingsProfiles.Remove(entity);
-        context.SettingsChangeOutboxEntries.Add(CreateOutboxEntry(
+        context.SettingsChangeOutboxEntries.Add(SettingsChangeOutboxEntryFactory.Create(
             SettingsChangeOutboxMessageTypes.CryptoSettingsProfileChanged,
             new CryptoSettingsProfileChangedIntegrationEvent(id, SettingsProfileChangeType.Deleted, DateTimeOffset.UtcNow)));
         await context.SaveChangesAsync(cancellationToken);
@@ -254,16 +253,4 @@ public sealed class EfCoreCryptoSettingsService(
         await context.SaveChangesAsync(cancellationToken);
     }
 
-    private static SettingsChangeOutboxEntryEntity CreateOutboxEntry(string messageType, object payload)
-    {
-        return new SettingsChangeOutboxEntryEntity
-        {
-            Id = Guid.CreateVersion7(),
-            MessageType = messageType,
-            PayloadJson = JsonSerializer.Serialize(payload),
-            CreatedAtUtc = DateTimeOffset.UtcNow,
-            PublishedAtUtc = null,
-            PublishAttemptCount = 0
-        };
-    }
 }

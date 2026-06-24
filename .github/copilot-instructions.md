@@ -122,6 +122,17 @@ Treat correctness, auditability, and safety as mandatory.
    - behavior may differ from real broker failure modes
 6. Keep transport configuration environment-driven so the broker can be swapped (for example to Azure Service Bus) without rewriting domain/application logic.
 
+## Settings Fanout and Runtime Settings Propagation
+
+1. Keep fanout and settings propagation infrastructure in shared infrastructure modules (for example endpoint naming, instance-id resolution, and generic fanout endpoint registration).
+2. Do not couple shared fanout infrastructure to a single bounded context (for example `CryptoTransactions`).
+3. Each bounded context (crypto, bank transfers, user profiles, general app settings, etc.) must provide its own settings-change consumers and fanout subscriptions through context-specific registration modules.
+4. Compose settings fanout at startup by combining:
+   - shared fanout infrastructure
+   - bounded-context subscription contributions
+5. Keep outbox message creation and dispatch reusable, but keep setting-specific mapping and runtime apply/refresh logic inside the owning bounded context.
+6. When adding new settings domains, extend by adding a new bounded-context registration and subscriptions rather than editing shared fanout internals.
+
 ## Resilience Policy Guidance (Polly)
 
 1. MassTransit and Polly serve different concerns and can be used together.

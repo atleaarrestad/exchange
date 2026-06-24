@@ -63,6 +63,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<ICryptoSettingsService, EfCoreCryptoSettingsService>();
         services.AddSingleton<ICryptoGatewaySettingsService, EfCoreCryptoGatewaySettingsService>();
         services.AddSingleton<ICryptoGatewayResilienceSettingsService, EfCoreCryptoGatewayResilienceSettingsService>();
+        services.AddSingleton<ISettingsChangeOutboxPublisher, SettingsChangeOutboxPublisher>();
         services.AddSingleton<ICryptoTransferTimeoutReconciler, CryptoTransferTimeoutReconciler>();
         services.AddSingleton<IBrokeredCryptoBuyService, BrokeredCryptoBuyService>();
         services.AddSingleton<IExternalHedgeExecutionReadinessGate, EfCoreExternalHedgeExecutionReadinessGate>();

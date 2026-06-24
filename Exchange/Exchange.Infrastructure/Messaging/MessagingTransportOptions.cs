@@ -1,13 +1,14 @@
-namespace Exchange.Configuration;
+using Microsoft.Extensions.Configuration;
+
+namespace Exchange.Infrastructure.Messaging;
 
 public sealed record MessagingTransportOptions
 {
     public const string InMemoryTransport = "in-memory";
     public const string RabbitMqTransport = "rabbitmq";
-    private const string DefaultInstanceId = "instance";
 
     public string Transport { get; init; } = RabbitMqTransport;
-    public string InstanceId { get; init; } = DefaultInstanceId;
+    public string InstanceId { get; init; } = SettingsFanoutEndpointNameFactory.ResolveInstanceId(null);
     public RabbitMqOptions RabbitMq { get; init; } = new();
 
     public bool UseRabbitMq => string.Equals(Transport, RabbitMqTransport, StringComparison.OrdinalIgnoreCase);
@@ -19,7 +20,7 @@ public sealed record MessagingTransportOptions
         return new MessagingTransportOptions
         {
             Transport = section.GetValue<string>(nameof(Transport)) ?? RabbitMqTransport,
-            InstanceId = ResolveInstanceId(section.GetValue<string>(nameof(InstanceId))),
+            InstanceId = SettingsFanoutEndpointNameFactory.ResolveInstanceId(section.GetValue<string>(nameof(InstanceId))),
             RabbitMq = new RabbitMqOptions
             {
                 Host = section.GetValue<string>($"{nameof(RabbitMq)}:{nameof(RabbitMqOptions.Host)}") ?? RabbitMqOptions.DefaultHost,
@@ -28,62 +29,6 @@ public sealed record MessagingTransportOptions
                 Password = section.GetValue<string>($"{nameof(RabbitMq)}:{nameof(RabbitMqOptions.Password)}") ?? RabbitMqOptions.DefaultPassword
             }
         };
-    }
-
-    private static string ResolveInstanceId(string? configuredInstanceId)
-    {
-        var normalizedConfigured = NormalizeInstanceId(configuredInstanceId);
-        if (normalizedConfigured is not null)
-        {
-            return normalizedConfigured;
-        }
-
-        var normalizedHost = NormalizeInstanceId(Environment.GetEnvironmentVariable("HOSTNAME"));
-        if (normalizedHost is not null)
-        {
-            return normalizedHost;
-        }
-
-        var normalizedMachine = NormalizeInstanceId(Environment.MachineName);
-        if (normalizedMachine is not null)
-        {
-            return $"{normalizedMachine}-{Environment.ProcessId}";
-        }
-
-        return $"{DefaultInstanceId}-{Environment.ProcessId}";
-    }
-
-    private static string? NormalizeInstanceId(string? value)
-    {
-        if (string.IsNullOrWhiteSpace(value))
-        {
-            return null;
-        }
-
-        Span<char> buffer = stackalloc char[value.Length];
-        var index = 0;
-
-        foreach (var character in value)
-        {
-            if (char.IsLetterOrDigit(character))
-            {
-                buffer[index++] = char.ToLowerInvariant(character);
-                continue;
-            }
-
-            if (character is '-' or '_' or '.')
-            {
-                buffer[index++] = '-';
-            }
-        }
-
-        if (index == 0)
-        {
-            return null;
-        }
-
-        var normalized = new string(buffer[..index]).Trim('-');
-        return string.IsNullOrWhiteSpace(normalized) ? null : normalized;
     }
 }
 

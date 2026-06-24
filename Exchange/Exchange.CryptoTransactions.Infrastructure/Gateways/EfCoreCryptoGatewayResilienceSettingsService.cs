@@ -4,7 +4,6 @@ using Exchange.CryptoTransactions.Application.Validation;
 using Exchange.CryptoTransactions.Infrastructure.Messaging;
 using Exchange.CryptoTransactions.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
-using System.Text.Json;
 
 namespace Exchange.CryptoTransactions.Infrastructure.Gateways;
 
@@ -73,7 +72,7 @@ public sealed class EfCoreCryptoGatewayResilienceSettingsService(
 
         await using var context = await dbContextFactory.CreateDbContextAsync(cancellationToken);
         context.CryptoGatewayResilienceSettingsProfiles.Add(entity);
-        context.SettingsChangeOutboxEntries.Add(CreateOutboxEntry(
+        context.SettingsChangeOutboxEntries.Add(SettingsChangeOutboxEntryFactory.Create(
             SettingsChangeOutboxMessageTypes.CryptoGatewayResilienceSettingsProfileChanged,
             new CryptoGatewayResilienceSettingsProfileChangedIntegrationEvent(entity.Id, SettingsProfileChangeType.Created, DateTimeOffset.UtcNow)));
         await context.SaveChangesAsync(cancellationToken);
@@ -111,7 +110,7 @@ public sealed class EfCoreCryptoGatewayResilienceSettingsService(
         entity.MaxQueueingActions = command.MaxQueueingActions;
         entity.UpdatedAtUtc = DateTimeOffset.UtcNow;
 
-        context.SettingsChangeOutboxEntries.Add(CreateOutboxEntry(
+        context.SettingsChangeOutboxEntries.Add(SettingsChangeOutboxEntryFactory.Create(
             SettingsChangeOutboxMessageTypes.CryptoGatewayResilienceSettingsProfileChanged,
             new CryptoGatewayResilienceSettingsProfileChangedIntegrationEvent(entity.Id, SettingsProfileChangeType.Updated, DateTimeOffset.UtcNow)));
         await context.SaveChangesAsync(cancellationToken);
@@ -132,7 +131,7 @@ public sealed class EfCoreCryptoGatewayResilienceSettingsService(
         }
 
         context.CryptoGatewayResilienceSettingsProfiles.Remove(entity);
-        context.SettingsChangeOutboxEntries.Add(CreateOutboxEntry(
+        context.SettingsChangeOutboxEntries.Add(SettingsChangeOutboxEntryFactory.Create(
             SettingsChangeOutboxMessageTypes.CryptoGatewayResilienceSettingsProfileChanged,
             new CryptoGatewayResilienceSettingsProfileChangedIntegrationEvent(id, SettingsProfileChangeType.Deleted, DateTimeOffset.UtcNow)));
         await context.SaveChangesAsync(cancellationToken);
@@ -215,16 +214,4 @@ public sealed class EfCoreCryptoGatewayResilienceSettingsService(
             entity.UpdatedAtUtc);
     }
 
-    private static SettingsChangeOutboxEntryEntity CreateOutboxEntry(string messageType, object payload)
-    {
-        return new SettingsChangeOutboxEntryEntity
-        {
-            Id = Guid.CreateVersion7(),
-            MessageType = messageType,
-            PayloadJson = JsonSerializer.Serialize(payload),
-            CreatedAtUtc = DateTimeOffset.UtcNow,
-            PublishedAtUtc = null,
-            PublishAttemptCount = 0
-        };
-    }
 }

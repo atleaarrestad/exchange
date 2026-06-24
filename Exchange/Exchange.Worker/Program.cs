@@ -1,6 +1,7 @@
 using Exchange.CryptoTransactions.Infrastructure.DependencyInjection;
 using Exchange.CryptoTransactions.Infrastructure.Messaging;
 using Exchange.CryptoTransactions.Infrastructure.Simulation.DependencyInjection;
+using Exchange.Infrastructure.Messaging;
 using MassTransit;
 using Microsoft.Extensions.Hosting;
 using Polly.Bulkhead;
@@ -19,33 +20,27 @@ if (isSimulationEnabled)
     builder.Services.AddCryptoTransactionsSimulation(builder.Configuration);
 }
 
-var useRabbitMq = string.Equals(
-    builder.Configuration.GetValue<string>("Messaging:Transport"),
-    "rabbitmq",
-    StringComparison.OrdinalIgnoreCase);
-var instanceId = ResolveInstanceId(builder.Configuration.GetValue<string>("Messaging:InstanceId"));
+var messagingOptions = MessagingTransportOptions.FromConfiguration(builder.Configuration);
 const ushort cryptoTransferSubmissionPrefetchCount = 96;
 const int cryptoTransferSubmissionConcurrentMessageLimit = 32;
 
 builder.Services.AddMassTransit(configurator =>
 {
     configurator.SetKebabCaseEndpointNameFormatter();
-    configurator.AddConsumer<CryptoSettingsProfileChangedConsumer>();
-    configurator.AddConsumer<CryptoGatewaySettingsProfileChangedConsumer>();
-    configurator.AddConsumer<CryptoGatewayResilienceSettingsProfileChangedConsumer>();
+    configurator.AddSettingsChangeConsumers();
     configurator.AddConsumer<CryptoTransferSubmissionRequestedConsumer>();
 
-    if (useRabbitMq)
+    if (messagingOptions.UseRabbitMq)
     {
         configurator.UsingRabbitMq((context, cfg) =>
         {
             cfg.Host(
-                builder.Configuration.GetValue<string>("Messaging:RabbitMq:Host") ?? "localhost",
-                builder.Configuration.GetValue<string>("Messaging:RabbitMq:VirtualHost") ?? "/",
+                messagingOptions.RabbitMq.Host,
+                messagingOptions.RabbitMq.VirtualHost,
                 host =>
                 {
-                    host.Username(builder.Configuration.GetValue<string>("Messaging:RabbitMq:Username") ?? "guest");
-                    host.Password(builder.Configuration.GetValue<string>("Messaging:RabbitMq:Password") ?? "guest");
+                    host.Username(messagingOptions.RabbitMq.Username);
+                    host.Password(messagingOptions.RabbitMq.Password);
                 });
             cfg.ReceiveEndpoint(
                 MessagingEndpointNames.CryptoTransferSubmission,
@@ -62,15 +57,10 @@ builder.Services.AddMassTransit(configurator =>
                     });
                     endpoint.ConfigureConsumer<CryptoTransferSubmissionRequestedConsumer>(context);
                 });
-            cfg.ReceiveEndpoint(
-                BuildFanoutEndpointName(SettingsChangeOutboxMessageTypes.CryptoSettingsProfileChanged, instanceId),
-                endpoint => endpoint.ConfigureConsumer<CryptoSettingsProfileChangedConsumer>(context));
-            cfg.ReceiveEndpoint(
-                BuildFanoutEndpointName(SettingsChangeOutboxMessageTypes.CryptoGatewaySettingsProfileChanged, instanceId),
-                endpoint => endpoint.ConfigureConsumer<CryptoGatewaySettingsProfileChangedConsumer>(context));
-            cfg.ReceiveEndpoint(
-                BuildFanoutEndpointName(SettingsChangeOutboxMessageTypes.CryptoGatewayResilienceSettingsProfileChanged, instanceId),
-                endpoint => endpoint.ConfigureConsumer<CryptoGatewayResilienceSettingsProfileChangedConsumer>(context));
+            SettingsFanoutEndpointRegistration.ConfigureFanoutEndpoints(
+                (endpointName, configureEndpoint) => cfg.ReceiveEndpoint(endpointName, configureEndpoint),
+                CryptoSettingsChangeMassTransitRegistration.BuildFanoutSubscriptions(context),
+                messagingOptions.InstanceId);
         });
         return;
     }
@@ -91,78 +81,12 @@ builder.Services.AddMassTransit(configurator =>
                 });
                 endpoint.ConfigureConsumer<CryptoTransferSubmissionRequestedConsumer>(context);
             });
-        cfg.ReceiveEndpoint(
-            BuildFanoutEndpointName(SettingsChangeOutboxMessageTypes.CryptoSettingsProfileChanged, instanceId),
-            endpoint => endpoint.ConfigureConsumer<CryptoSettingsProfileChangedConsumer>(context));
-        cfg.ReceiveEndpoint(
-            BuildFanoutEndpointName(SettingsChangeOutboxMessageTypes.CryptoGatewaySettingsProfileChanged, instanceId),
-            endpoint => endpoint.ConfigureConsumer<CryptoGatewaySettingsProfileChangedConsumer>(context));
-        cfg.ReceiveEndpoint(
-            BuildFanoutEndpointName(SettingsChangeOutboxMessageTypes.CryptoGatewayResilienceSettingsProfileChanged, instanceId),
-            endpoint => endpoint.ConfigureConsumer<CryptoGatewayResilienceSettingsProfileChangedConsumer>(context));
+        SettingsFanoutEndpointRegistration.ConfigureFanoutEndpoints(
+            (endpointName, configureEndpoint) => cfg.ReceiveEndpoint(endpointName, configureEndpoint),
+            CryptoSettingsChangeMassTransitRegistration.BuildFanoutSubscriptions(context),
+            messagingOptions.InstanceId);
     });
 });
 
 var appHost = builder.Build();
 appHost.Run();
-
-static string BuildFanoutEndpointName(string messageTopic, string instanceId)
-{
-    return $"{messageTopic}-subscriber-{instanceId}";
-}
-
-static string ResolveInstanceId(string? configuredInstanceId)
-{
-    var normalizedConfigured = NormalizeInstanceId(configuredInstanceId);
-    if (normalizedConfigured is not null)
-    {
-        return normalizedConfigured;
-    }
-
-    var normalizedHost = NormalizeInstanceId(Environment.GetEnvironmentVariable("HOSTNAME"));
-    if (normalizedHost is not null)
-    {
-        return normalizedHost;
-    }
-
-    var normalizedMachine = NormalizeInstanceId(Environment.MachineName);
-    if (normalizedMachine is not null)
-    {
-        return $"{normalizedMachine}-{Environment.ProcessId}";
-    }
-
-    return $"instance-{Environment.ProcessId}";
-}
-
-static string? NormalizeInstanceId(string? value)
-{
-    if (string.IsNullOrWhiteSpace(value))
-    {
-        return null;
-    }
-
-    Span<char> buffer = stackalloc char[value.Length];
-    var index = 0;
-
-    foreach (var character in value)
-    {
-        if (char.IsLetterOrDigit(character))
-        {
-            buffer[index++] = char.ToLowerInvariant(character);
-            continue;
-        }
-
-        if (character is '-' or '_' or '.')
-        {
-            buffer[index++] = '-';
-        }
-    }
-
-    if (index == 0)
-    {
-        return null;
-    }
-
-    var normalized = new string(buffer[..index]).Trim('-');
-    return string.IsNullOrWhiteSpace(normalized) ? null : normalized;
-}

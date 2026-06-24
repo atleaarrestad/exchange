@@ -1,16 +1,13 @@
-using Exchange.CryptoTransactions.Application.Messaging;
 using Exchange.CryptoTransactions.Infrastructure.Persistence;
-using MassTransit;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using System.Text.Json;
 
 namespace Exchange.CryptoTransactions.Infrastructure.Messaging;
 
 public sealed class SettingsChangeOutboxPublisherWorker(
     IDbContextFactory<CryptoTransactionsDbContext> dbContextFactory,
-    IBus bus,
+    ISettingsChangeOutboxPublisher outboxPublisher,
     ILogger<SettingsChangeOutboxPublisherWorker> logger) : BackgroundService
 {
     private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(2);
@@ -120,31 +117,6 @@ public sealed class SettingsChangeOutboxPublisherWorker(
 
     private async Task PublishEntryAsync(SettingsChangeOutboxEntryEntity entry, CancellationToken cancellationToken)
     {
-        switch (entry.MessageType)
-        {
-            case SettingsChangeOutboxMessageTypes.CryptoSettingsProfileChanged:
-                await bus.Publish(
-                    Deserialize<CryptoSettingsProfileChangedIntegrationEvent>(entry.PayloadJson),
-                    cancellationToken);
-                return;
-            case SettingsChangeOutboxMessageTypes.CryptoGatewaySettingsProfileChanged:
-                await bus.Publish(
-                    Deserialize<CryptoGatewaySettingsProfileChangedIntegrationEvent>(entry.PayloadJson),
-                    cancellationToken);
-                return;
-            case SettingsChangeOutboxMessageTypes.CryptoGatewayResilienceSettingsProfileChanged:
-                await bus.Publish(
-                    Deserialize<CryptoGatewayResilienceSettingsProfileChangedIntegrationEvent>(entry.PayloadJson),
-                    cancellationToken);
-                return;
-            default:
-                throw new InvalidOperationException($"Unknown outbox message type '{entry.MessageType}'.");
-        }
-    }
-
-    private static T Deserialize<T>(string payloadJson)
-    {
-        var value = JsonSerializer.Deserialize<T>(payloadJson);
-        return value ?? throw new InvalidOperationException($"Unable to deserialize payload to {typeof(T).Name}.");
+        await outboxPublisher.PublishAsync(entry, cancellationToken);
     }
 }
