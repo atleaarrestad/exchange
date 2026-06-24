@@ -45,3 +45,14 @@ Kraken can be enabled as a real blockchain transfer gateway via `CryptoTransacti
 
 Brokered buy execution now uses a persistent ownership ledger core in the crypto infrastructure database. Customer ownership positions, platform inventory positions, executed buys, and immutable journal entries are stored for replay-safe idempotency and auditability while external hedging remains asynchronously batched.
 Executed external hedge batches are now persisted as immutable execution records and settled asynchronously into the ledger by moving quantity from `platform_external_hedge_pending` to `platform_inventory`, with reconciliation retries for unsettled executions.
+
+## Fiat Transactions bounded context
+
+Fiat bookkeeping is isolated in dedicated projects separate from crypto ownership accounting:
+
+- `Exchange.FiatTransactions.Domain` for fiat value objects.
+- `Exchange.FiatTransactions.Application` for fiat ledger contracts.
+- `Exchange.FiatTransactions.Infrastructure` for persistent fiat ledger state and postings.
+
+The fiat ledger uses its own tables (`fiat_balance_positions`, `fiat_ledger_transactions`, `fiat_ledger_entries`, and `brokered_crypto_buy_settlements`) so fiat balances and crypto balances are reconciled independently while still sharing brokered buy identifiers for cross-ledger audit trails.
+Brokered buy postings now move customer available fiat into `platform_trade_clearing`, and separate bank settlement postings move settled amounts from `platform_trade_clearing` to `platform_bank_cash` for bank-side reconciliation without platform custody.

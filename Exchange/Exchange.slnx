@@ -12,6 +12,9 @@
   <Project Path="Exchange.CryptoTransactions.Infrastructure.Simulation/Exchange.CryptoTransactions.Infrastructure.Simulation.csproj" />
   <Project Path="Exchange.CryptoTransactions.Infrastructure/Exchange.CryptoTransactions.Infrastructure.csproj" />
   <Project Path="Exchange.CryptoTransactions.Resilience/Exchange.CryptoTransactions.Resilience.csproj" />
+  <Project Path="Exchange.FiatTransactions.Application/Exchange.FiatTransactions.Application.csproj" />
+  <Project Path="Exchange.FiatTransactions.Domain/Exchange.FiatTransactions.Domain.csproj" />
+  <Project Path="Exchange.FiatTransactions.Infrastructure/Exchange.FiatTransactions.Infrastructure.csproj" />
   <Project Path="Exchange.Infrastructure/Exchange.Infrastructure.csproj" />
   <Project Path="Exchange.Worker/Exchange.Worker.csproj" />
   <Project Path="Exchange/Exchange.Api.csproj" />

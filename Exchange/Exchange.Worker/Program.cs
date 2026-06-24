@@ -1,6 +1,7 @@
 using Exchange.CryptoTransactions.Infrastructure.DependencyInjection;
 using Exchange.CryptoTransactions.Infrastructure.Messaging;
 using Exchange.CryptoTransactions.Infrastructure.Simulation.DependencyInjection;
+using Exchange.FiatTransactions.Infrastructure.DependencyInjection;
 using Exchange.Infrastructure.Messaging;
 using MassTransit;
 using Microsoft.Extensions.Hosting;
@@ -11,7 +12,9 @@ using Polly.Timeout;
 var builder = Host.CreateApplicationBuilder(args);
 
 builder.Services.AddCryptoTransactionsInfrastructure(builder.Configuration);
-var runMigrationsOnStartup = builder.Configuration.GetValue<bool>(InfrastructureConfigurationKeys.RunMigrationsOnStartup);
+builder.Services.AddFiatTransactionsInfrastructure(builder.Configuration);
+var runMigrationsOnStartup = builder.Configuration.GetValue<bool>(Exchange.CryptoTransactions.Infrastructure.DependencyInjection.InfrastructureConfigurationKeys.RunMigrationsOnStartup);
+var runFiatMigrationsOnStartup = builder.Configuration.GetValue<bool>(Exchange.FiatTransactions.Infrastructure.DependencyInjection.InfrastructureConfigurationKeys.RunMigrationsOnStartup);
 
 var isSimulationEnabled = builder.Configuration
     .GetSection("Simulation")
@@ -93,5 +96,9 @@ var appHost = builder.Build();
 if (runMigrationsOnStartup)
 {
     await appHost.Services.MigrateCryptoTransactionsDatabaseAsync();
+}
+if (runFiatMigrationsOnStartup)
+{
+    await appHost.Services.MigrateFiatTransactionsDatabaseAsync();
 }
 appHost.Run();

@@ -3,6 +3,7 @@ using Exchange.Configuration;
 using Exchange.CryptoTransactions.Infrastructure.DependencyInjection;
 using Exchange.CryptoTransactions.Infrastructure.Messaging;
 using Exchange.CryptoTransactions.Infrastructure.Simulation.DependencyInjection;
+using Exchange.FiatTransactions.Infrastructure.DependencyInjection;
 using Exchange.Infrastructure.Caching;
 using Exchange.Infrastructure.Messaging;
 using Exchange.Middleware;
@@ -18,6 +19,7 @@ builder.Services.AddCryptoTransactionsInfrastructure(
     builder.Configuration,
     includeBackgroundWorkers: false,
     includeBootstrapWorker: false);
+builder.Services.AddFiatTransactionsInfrastructure(builder.Configuration);
 var messagingOptions = MessagingTransportOptions.FromConfiguration(builder.Configuration);
 
 var isSimulationEnabled = builder.Configuration.GetSection(ConfigurationKeys.SimulationSection)
@@ -66,10 +68,16 @@ builder.Services.AddOpenApi();
 
 var app = builder.Build();
 
-var runMigrationsOnStartup = builder.Configuration.GetValue<bool>(InfrastructureConfigurationKeys.RunMigrationsOnStartup);
+var runMigrationsOnStartup = builder.Configuration.GetValue<bool>(Exchange.CryptoTransactions.Infrastructure.DependencyInjection.InfrastructureConfigurationKeys.RunMigrationsOnStartup);
 if (runMigrationsOnStartup)
 {
     await app.Services.MigrateCryptoTransactionsDatabaseAsync();
+}
+
+var runFiatMigrationsOnStartup = builder.Configuration.GetValue<bool>(Exchange.FiatTransactions.Infrastructure.DependencyInjection.InfrastructureConfigurationKeys.RunMigrationsOnStartup);
+if (runFiatMigrationsOnStartup)
+{
+    await app.Services.MigrateFiatTransactionsDatabaseAsync();
 }
 
 app.UseMiddleware<ApiExceptionMappingMiddleware>();

@@ -16,6 +16,9 @@
     <ProjectReference Include="..\Exchange.CryptoTransactions.Domain\Exchange.CryptoTransactions.Domain.csproj" />
     <ProjectReference Include="..\Exchange.CryptoTransactions.Infrastructure\Exchange.CryptoTransactions.Infrastructure.csproj" />
     <ProjectReference Include="..\Exchange.CryptoTransactions.Infrastructure.Simulation\Exchange.CryptoTransactions.Infrastructure.Simulation.csproj" />
+    <ProjectReference Include="..\Exchange.FiatTransactions.Application\Exchange.FiatTransactions.Application.csproj" />
+    <ProjectReference Include="..\Exchange.FiatTransactions.Domain\Exchange.FiatTransactions.Domain.csproj" />
+    <ProjectReference Include="..\Exchange.FiatTransactions.Infrastructure\Exchange.FiatTransactions.Infrastructure.csproj" />
   </ItemGroup>
 
   <ItemGroup>

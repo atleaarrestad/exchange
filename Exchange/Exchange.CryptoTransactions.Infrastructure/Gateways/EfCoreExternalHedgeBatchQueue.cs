@@ -1,6 +1,7 @@
 using Exchange.CryptoTransactions.Application;
 using Exchange.CryptoTransactions.Application.Contracts;
 using Exchange.CryptoTransactions.Domain.ValueObjects;
+using Exchange.Infrastructure.Persistence;
 using Exchange.CryptoTransactions.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 
@@ -56,7 +57,7 @@ public sealed class EfCoreExternalHedgeBatchQueue(
         {
             await context.SaveChangesAsync(cancellationToken);
         }
-        catch (DbUpdateException exception) when (IsUniqueConstraintViolation(exception))
+        catch (DbUpdateException exception) when (UniqueConstraintViolationDetector.IsUniqueConstraintViolation(exception))
         {
             // Idempotent duplicate registration: same customer/client-order pair already buffered or executed.
         }
@@ -217,25 +218,6 @@ public sealed class EfCoreExternalHedgeBatchQueue(
                     .SetProperty(entry => entry.LeaseExpiresAtUtc, (DateTimeOffset?)null)
                     .SetProperty(entry => entry.LeaseToken, (Guid?)null),
                 cancellationToken);
-    }
-
-    private static bool IsUniqueConstraintViolation(DbUpdateException exception)
-    {
-        if (exception.InnerException is null)
-        {
-            return false;
-        }
-
-        var exceptionType = exception.InnerException.GetType();
-        var sqlState = exceptionType.GetProperty("SqlState")?.GetValue(exception.InnerException) as string;
-        if (string.Equals(sqlState, "23505", StringComparison.Ordinal))
-        {
-            return true;
-        }
-
-        var message = exception.InnerException.Message;
-        return message.Contains("UNIQUE constraint failed", StringComparison.OrdinalIgnoreCase) ||
-               message.Contains("duplicate key value violates unique constraint", StringComparison.OrdinalIgnoreCase);
     }
 
     private sealed record CandidateBatchGroup(

@@ -3,6 +3,7 @@ using Exchange.CryptoTransactions.Application;
 using Exchange.CryptoTransactions.Application.Contracts;
 using Exchange.CryptoTransactions.Application.Validation;
 using Exchange.CryptoTransactions.Domain.ValueObjects;
+using Exchange.Infrastructure.Persistence;
 using Exchange.CryptoTransactions.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 
@@ -395,7 +396,7 @@ public sealed class EfCoreCryptoTransferIdempotencyStore : ICryptoTransferIdempo
             await context.SaveChangesAsync(cancellationToken);
             return true;
         }
-        catch (DbUpdateException exception) when (IsUniqueConstraintViolation(exception))
+        catch (DbUpdateException exception) when (UniqueConstraintViolationDetector.IsUniqueConstraintViolation(exception))
         {
             return false;
         }
@@ -545,26 +546,6 @@ public sealed class EfCoreCryptoTransferIdempotencyStore : ICryptoTransferIdempo
 
         public ValueTask<CryptoTransactionsDbContext> CreateDbContextAsync(CancellationToken cancellationToken = default)
             => ValueTask.FromResult(CreateDbContext());
-    }
-
-    private static bool IsUniqueConstraintViolation(DbUpdateException exception)
-    {
-        if (exception.InnerException is null)
-        {
-            return false;
-        }
-
-        var exceptionType = exception.InnerException.GetType();
-
-        var sqlState = exceptionType.GetProperty("SqlState")?.GetValue(exception.InnerException) as string;
-        if (string.Equals(sqlState, "23505", StringComparison.Ordinal))
-        {
-            return true;
-        }
-
-        var message = exception.InnerException.Message;
-        return message.Contains("UNIQUE constraint failed", StringComparison.OrdinalIgnoreCase) ||
-               message.Contains("duplicate key value violates unique constraint", StringComparison.OrdinalIgnoreCase);
     }
 
     private static void EnsureMatchingRequestFingerprint(
