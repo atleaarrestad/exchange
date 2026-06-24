@@ -11,6 +11,65 @@
   <section class="controls-grid">
     <mat-card>
       <mat-card-header>
+        <mat-card-title>Simulation Control</mat-card-title>
+        <mat-card-subtitle>Start one meaningful brokered buy run or reset database state</mat-card-subtitle>
+      </mat-card-header>
+      <mat-card-content class="simulation-control-grid">
+        <mat-form-field appearance="outline">
+          <mat-label>Customer account</mat-label>
+          <input matInput [(ngModel)]="startRequest.customerAccountId" />
+        </mat-form-field>
+        <mat-form-field appearance="outline">
+          <mat-label>Asset symbol</mat-label>
+          <mat-select [(ngModel)]="startRequest.assetSymbol">
+            <mat-option value="BTC">BTC</mat-option>
+            <mat-option value="ETH">ETH</mat-option>
+          </mat-select>
+        </mat-form-field>
+        <mat-form-field appearance="outline">
+          <mat-label>Quantity</mat-label>
+          <input matInput type="number" min="0.00000001" step="0.00000001" [(ngModel)]="startRequest.quantity" />
+        </mat-form-field>
+        <mat-form-field appearance="outline">
+          <mat-label>Quote currency</mat-label>
+          <mat-select [(ngModel)]="startRequest.quoteCurrency">
+            <mat-option value="NOK">NOK</mat-option>
+          </mat-select>
+        </mat-form-field>
+        <mat-form-field appearance="outline">
+          <mat-label>Customer fiat balance</mat-label>
+          <input matInput type="number" min="0" step="1" [(ngModel)]="startRequest.customerFiatAvailableBalance" />
+        </mat-form-field>
+        <mat-form-field appearance="outline">
+          <mat-label>Platform BTC inventory</mat-label>
+          <input matInput type="number" min="0" step="0.00000001" [(ngModel)]="startRequest.platformBitcoinInventory" />
+        </mat-form-field>
+        <mat-form-field appearance="outline">
+          <mat-label>Platform ETH inventory</mat-label>
+          <input matInput type="number" min="0" step="0.00000001" [(ngModel)]="startRequest.platformEtherInventory" />
+        </mat-form-field>
+        @if (operationSuccessMessage !== null) {
+          <p class="status--good">{{ operationSuccessMessage }}</p>
+        }
+        @if (operationErrorMessage !== null) {
+          <p class="status--bad">{{ operationErrorMessage }}</p>
+        }
+        @if (lastOperationAtUtc !== null) {
+          <p>Last operation: {{ lastOperationAtUtc | date: 'yyyy-MM-dd HH:mm:ss':'UTC' }} UTC</p>
+        }
+      </mat-card-content>
+      <mat-card-actions align="end">
+        <button mat-stroked-button type="button" (click)="resetSimulationData()" [disabled]="isResetRunning || isStartRunning">
+          {{ isResetRunning ? 'Resetting...' : 'Reset database data' }}
+        </button>
+        <button mat-flat-button type="button" (click)="startSimulation()" [disabled]="isStartRunning || isResetRunning">
+          {{ isStartRunning ? 'Starting...' : 'Start simulation run' }}
+        </button>
+      </mat-card-actions>
+    </mat-card>
+
+    <mat-card>
+      <mat-card-header>
         <mat-card-title>Scenario</mat-card-title>
         <mat-card-subtitle>Choose a simulation profile to visualize behavior</mat-card-subtitle>
       </mat-card-header>

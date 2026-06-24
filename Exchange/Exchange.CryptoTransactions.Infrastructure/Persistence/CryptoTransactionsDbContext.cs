@@ -355,7 +355,7 @@ public sealed class CryptoTransactionsDbContext(DbContextOptions<CryptoTransacti
         brokeredBuySagaStates.ToTable("brokered_fiat_crypto_buy_saga_states");
         brokeredBuySagaStates.HasKey(entity => entity.CorrelationId);
         brokeredBuySagaStates.Property(entity => entity.CorrelationId).HasColumnName("correlation_id");
-        brokeredBuySagaStates.Property(entity => entity.CurrentState).HasColumnName("current_state").HasMaxLength(64);
+        brokeredBuySagaStates.Property(entity => entity.CurrentState).HasColumnName("current_state").HasMaxLength(64).IsRequired(false);
         brokeredBuySagaStates.Property(entity => entity.QuoteId).HasColumnName("quote_id");
         brokeredBuySagaStates.Property(entity => entity.ClientOrderId).HasColumnName("client_order_id").HasMaxLength(128);
         brokeredBuySagaStates.Property(entity => entity.CustomerAccountId).HasColumnName("customer_account_id").HasMaxLength(64);

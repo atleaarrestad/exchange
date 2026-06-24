@@ -1,11 +1,16 @@
-import { Injectable, computed, signal } from '@angular/core';
+import { Injectable, computed, inject, signal } from '@angular/core';
+import { firstValueFrom } from 'rxjs';
+import { AdminApiClientService } from '../../core/api/admin-api-client.service';
 import {
   EVENT_SEVERITY,
   HEALTH_STATE,
   INVARIANT_STATE,
   OPERATING_ENVIRONMENT,
   OpsScenario,
-  OpsSnapshot
+  OpsSnapshot,
+  ResetBrokeredBuySimulationDataResponse,
+  StartBrokeredBuySimulationRequest,
+  StartBrokeredBuySimulationResponse
 } from './simulation-ops.models';
 
 const BASELINE_SCENARIO: OpsScenario = {
@@ -25,6 +30,9 @@ const LIQUIDITY_DROP_SCENARIO: OpsScenario = {
   name: 'Liquidity Drop',
   description: 'Reduced available liquidity and delayed hedging.'
 };
+
+const START_BROKERED_BUY_SIMULATION_ENDPOINT = '/api/admin/simulation/brokered-buy/start';
+const RESET_BROKERED_BUY_SIMULATION_DATA_ENDPOINT = '/api/admin/simulation/brokered-buy/reset';
 
 const SNAPSHOTS: readonly OpsSnapshot[] = [
   {
@@ -235,6 +243,7 @@ const SNAPSHOTS: readonly OpsSnapshot[] = [
 
 @Injectable({ providedIn: 'root' })
 export class SimulationOpsConsoleService {
+  private readonly apiClient = inject(AdminApiClientService);
   private readonly snapshotIndex = signal(0);
 
   readonly snapshot = computed(() => SNAPSHOTS[this.snapshotIndex()]);
@@ -262,4 +271,75 @@ export class SimulationOpsConsoleService {
   advanceScenario(): void {
     this.snapshotIndex.update((currentIndex) => (currentIndex + 1) % SNAPSHOTS.length);
   }
+
+  startBrokeredBuySimulation(request: StartBrokeredBuySimulationRequest): Promise<StartBrokeredBuySimulationResponse> {
+    return firstValueFrom(
+      this.apiClient.post<StartBrokeredBuySimulationResponse, StartBrokeredBuySimulationRequest>(
+        START_BROKERED_BUY_SIMULATION_ENDPOINT,
+        request
+      )
+    ).then((response) => ensureStartBrokeredBuySimulationResponse(response, START_BROKERED_BUY_SIMULATION_ENDPOINT));
+  }
+
+  resetBrokeredBuyData(): Promise<ResetBrokeredBuySimulationDataResponse> {
+    return firstValueFrom(
+      this.apiClient.post<ResetBrokeredBuySimulationDataResponse, Record<string, never>>(
+        RESET_BROKERED_BUY_SIMULATION_DATA_ENDPOINT,
+        {}
+      )
+    ).then((response) => ensureResetBrokeredBuySimulationDataResponse(response, RESET_BROKERED_BUY_SIMULATION_DATA_ENDPOINT));
+  }
+}
+
+function ensureStartBrokeredBuySimulationResponse(
+  response: unknown,
+  endpoint: string
+): StartBrokeredBuySimulationResponse {
+  if (!isStartBrokeredBuySimulationResponse(response)) {
+    throw new Error(`Unexpected response from ${endpoint}.`);
+  }
+
+  return response;
+}
+
+function isStartBrokeredBuySimulationResponse(value: unknown): value is StartBrokeredBuySimulationResponse {
+  if (typeof value !== 'object' || value === null) {
+    return false;
+  }
+
+  const candidate = value as Partial<StartBrokeredBuySimulationResponse>;
+  return (
+    typeof candidate.correlationId === 'string' &&
+    typeof candidate.quoteId === 'string' &&
+    typeof candidate.clientOrderId === 'string' &&
+    typeof candidate.customerAccountId === 'string' &&
+    typeof candidate.assetSymbol === 'string' &&
+    typeof candidate.quantity === 'number' &&
+    typeof candidate.quoteCurrency === 'string' &&
+    typeof candidate.seededCustomerFiatAvailableBalance === 'number' &&
+    typeof candidate.seededPlatformBitcoinInventory === 'number' &&
+    typeof candidate.seededPlatformEtherInventory === 'number' &&
+    typeof candidate.startedAtUtc === 'string' &&
+    typeof candidate.status === 'string'
+  );
+}
+
+function ensureResetBrokeredBuySimulationDataResponse(
+  response: unknown,
+  endpoint: string
+): ResetBrokeredBuySimulationDataResponse {
+  if (!isResetBrokeredBuySimulationDataResponse(response)) {
+    throw new Error(`Unexpected response from ${endpoint}.`);
+  }
+
+  return response;
+}
+
+function isResetBrokeredBuySimulationDataResponse(value: unknown): value is ResetBrokeredBuySimulationDataResponse {
+  if (typeof value !== 'object' || value === null) {
+    return false;
+  }
+
+  const candidate = value as Partial<ResetBrokeredBuySimulationDataResponse>;
+  return typeof candidate.resetAtUtc === 'string' && typeof candidate.status === 'string';
 }

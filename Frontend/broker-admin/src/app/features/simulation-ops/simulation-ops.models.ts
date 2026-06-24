@@ -66,3 +66,36 @@ export interface OpsSnapshot {
   readonly invariantChecks: readonly InvariantCheck[];
   readonly timelineEvents: readonly TimelineEvent[];
 }
+
+export interface StartBrokeredBuySimulationRequest {
+  readonly customerAccountId: string;
+  readonly assetSymbol: string;
+  readonly quantity: number;
+  readonly quoteCurrency: string;
+  readonly customerFiatAvailableBalance: number;
+  readonly platformBitcoinInventory: number;
+  readonly platformEtherInventory: number;
+  readonly maxUnitPrice: number | null;
+  readonly maxTotalCost: number | null;
+  readonly clientOrderId: string | null;
+}
+
+export interface StartBrokeredBuySimulationResponse {
+  readonly correlationId: string;
+  readonly quoteId: string;
+  readonly clientOrderId: string;
+  readonly customerAccountId: string;
+  readonly assetSymbol: string;
+  readonly quantity: number;
+  readonly quoteCurrency: string;
+  readonly seededCustomerFiatAvailableBalance: number;
+  readonly seededPlatformBitcoinInventory: number;
+  readonly seededPlatformEtherInventory: number;
+  readonly startedAtUtc: string;
+  readonly status: string;
+}
+
+export interface ResetBrokeredBuySimulationDataResponse {
+  readonly resetAtUtc: string;
+  readonly status: string;
+}

@@ -35,6 +35,8 @@ Simulation mode is enabled through configuration (`Simulation:Enabled`) and swap
 
 Validation is centralized in the application command validator. Domain invariants remain enforced in value objects/aggregates, and API error responses are normalized as `ProblemDetails`.
 
+For brokered buy simulation setup, `POST /api/admin/simulation/brokered-buy/reset` clears buy-related crypto/fiat state, and `POST /api/admin/simulation/brokered-buy/start` clears state, seeds one customer fiat balance plus platform BTC/ETH inventory, creates a quote, and submits one brokered buy saga run.
+
 Idempotency receipts are persisted in PostgreSQL (`CryptoTransactions:Idempotency:ConnectionString`) so repeat requests with the same `(sourceAccountId, assetSymbol, idempotencyKey)` return the original receipt across process restarts and across concurrent API instances.
 
 Transfer submission now enforces a funds reservation boundary on the API path, then stores the operation as pending for asynchronous worker execution. In simulation, an in-memory reservation gateway tracks per-account available balances and rejects transfers that would overdraw.

@@ -35,6 +35,12 @@ mat-form-field {
   margin: 0;
 }
 
+.simulation-control-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 0.75rem;
+}
+
 .summary-chips {
   min-height: 5rem;
 }

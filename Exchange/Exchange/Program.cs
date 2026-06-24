@@ -9,6 +9,7 @@ using Exchange.FiatTransactions.Infrastructure.DependencyInjection;
 using Exchange.Infrastructure.Caching;
 using Exchange.Infrastructure.Messaging;
 using Exchange.Middleware;
+using Exchange.Simulation;
 using MassTransit.EntityFrameworkCoreIntegration;
 using Microsoft.EntityFrameworkCore;
 
@@ -19,6 +20,7 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddControllers();
 builder.Services.AddProblemDetails();
 builder.Services.AddInfrastructureCaching();
+builder.Services.AddScoped<IBrokeredBuySimulationRunner, BrokeredBuySimulationRunner>();
 builder.Services.AddCryptoTransactionsInfrastructure(
     builder.Configuration,
     includeBackgroundWorkers: false,
@@ -27,10 +29,10 @@ builder.Services.AddFiatTransactionsInfrastructure(builder.Configuration);
 var messagingOptions = MessagingTransportOptions.FromConfiguration(builder.Configuration);
 var cryptoTransactionsConnectionString = builder.Configuration.GetValue<string>(Exchange.CryptoTransactions.Infrastructure.DependencyInjection.InfrastructureConfigurationKeys.IdempotencyConnectionString)
     ?? Exchange.CryptoTransactions.Infrastructure.DependencyInjection.InfrastructureConfigurationKeys.DefaultIdempotencyConnectionString;
-builder.Services.AddDbContext<CryptoTransactionsDbContext>(options =>
-{
-    options.UseNpgsql(cryptoTransactionsConnectionString);
-});
+builder.Services.AddDbContext<CryptoTransactionsDbContext>(
+    options => { options.UseNpgsql(cryptoTransactionsConnectionString); },
+    contextLifetime: ServiceLifetime.Scoped,
+    optionsLifetime: ServiceLifetime.Singleton);
 
 var isSimulationEnabled = builder.Configuration.GetSection(ConfigurationKeys.SimulationSection)
     .GetValue<bool>(ConfigurationKeys.Enabled);
@@ -73,9 +75,7 @@ builder.Services.AddMassTransit(configurator =>
                 "brokered-fiat-crypto-buy-saga",
                 endpoint =>
                 {
-                    endpoint.StateMachineSaga(
-                        context.GetRequiredService<BrokeredFiatCryptoBuyStateMachine>(),
-                        context.GetRequiredService<ISagaRepository<BrokeredFiatCryptoBuySagaState>>());
+                    endpoint.ConfigureSaga<BrokeredFiatCryptoBuySagaState>(context);
                 });
             cfg.ReceiveEndpoint("reserve-fiat-for-brokered-buy", endpoint => endpoint.ConfigureConsumer<ReserveFiatForBrokeredBuyConsumer>(context));
             cfg.ReceiveEndpoint("book-crypto-for-brokered-buy", endpoint => endpoint.ConfigureConsumer<BookCryptoForBrokeredBuyConsumer>(context));
@@ -96,9 +96,7 @@ builder.Services.AddMassTransit(configurator =>
             "brokered-fiat-crypto-buy-saga",
             endpoint =>
             {
-                endpoint.StateMachineSaga(
-                    context.GetRequiredService<BrokeredFiatCryptoBuyStateMachine>(),
-                    context.GetRequiredService<ISagaRepository<BrokeredFiatCryptoBuySagaState>>());
+                endpoint.ConfigureSaga<BrokeredFiatCryptoBuySagaState>(context);
             });
         cfg.ReceiveEndpoint("reserve-fiat-for-brokered-buy", endpoint => endpoint.ConfigureConsumer<ReserveFiatForBrokeredBuyConsumer>(context));
         cfg.ReceiveEndpoint("book-crypto-for-brokered-buy", endpoint => endpoint.ConfigureConsumer<BookCryptoForBrokeredBuyConsumer>(context));

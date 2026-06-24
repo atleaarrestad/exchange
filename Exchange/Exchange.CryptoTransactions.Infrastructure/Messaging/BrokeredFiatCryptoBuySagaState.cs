@@ -5,7 +5,7 @@ namespace Exchange.BrokeredBuys.Messaging;
 public sealed class BrokeredFiatCryptoBuySagaState : SagaStateMachineInstance
 {
     public Guid CorrelationId { get; set; }
-    public string CurrentState { get; set; } = string.Empty;
+    public string? CurrentState { get; set; }
 
     public Guid QuoteId { get; set; }
     public string ClientOrderId { get; set; } = string.Empty;
