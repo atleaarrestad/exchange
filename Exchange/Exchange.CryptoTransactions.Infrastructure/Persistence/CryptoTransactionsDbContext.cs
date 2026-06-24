@@ -8,6 +8,7 @@ public sealed class CryptoTransactionsDbContext(DbContextOptions<CryptoTransacti
     public DbSet<CryptoSettingsProfileEntity> CryptoSettingsProfiles => Set<CryptoSettingsProfileEntity>();
     public DbSet<CryptoGatewaySettingsProfileEntity> CryptoGatewaySettingsProfiles => Set<CryptoGatewaySettingsProfileEntity>();
     public DbSet<SettingsChangeOutboxEntryEntity> SettingsChangeOutboxEntries => Set<SettingsChangeOutboxEntryEntity>();
+    public DbSet<ExternalHedgeBatchEntryEntity> ExternalHedgeBatchEntries => Set<ExternalHedgeBatchEntryEntity>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -122,5 +123,29 @@ public sealed class CryptoTransactionsDbContext(DbContextOptions<CryptoTransacti
             .HasDatabaseName("ix_settings_change_outbox_entries_publish_state");
         outboxEntries.HasIndex(entity => new { entity.PublishedAtUtc, entity.LeaseExpiresAtUtc, entity.CreatedAtUtc })
             .HasDatabaseName("ix_settings_change_outbox_entries_lease_state");
+
+        var externalHedgeBatchEntries = modelBuilder.Entity<ExternalHedgeBatchEntryEntity>();
+        externalHedgeBatchEntries.ToTable("external_hedge_batch_entries");
+        externalHedgeBatchEntries.HasKey(entity => entity.Id);
+        externalHedgeBatchEntries.Property(entity => entity.Id).HasColumnName("id");
+        externalHedgeBatchEntries.Property(entity => entity.CustomerAccountId).HasColumnName("customer_account_id").HasMaxLength(64);
+        externalHedgeBatchEntries.Property(entity => entity.ClientOrderId).HasColumnName("client_order_id").HasMaxLength(128);
+        externalHedgeBatchEntries.Property(entity => entity.AssetSymbol).HasColumnName("asset_symbol").HasMaxLength(16);
+        externalHedgeBatchEntries.Property(entity => entity.QuoteCurrency).HasColumnName("quote_currency").HasMaxLength(16);
+        externalHedgeBatchEntries.Property(entity => entity.Quantity).HasColumnName("quantity");
+        externalHedgeBatchEntries.Property(entity => entity.RequestedAtUtc).HasColumnName("requested_at_utc");
+        externalHedgeBatchEntries.Property(entity => entity.ExecutedAtUtc).HasColumnName("executed_at_utc");
+        externalHedgeBatchEntries.Property(entity => entity.ExecutedExternalOrderId).HasColumnName("executed_external_order_id").HasMaxLength(128);
+        externalHedgeBatchEntries.Property(entity => entity.LeaseOwnerId).HasColumnName("lease_owner_id").HasMaxLength(128);
+        externalHedgeBatchEntries.Property(entity => entity.LeaseExpiresAtUtc).HasColumnName("lease_expires_at_utc");
+        externalHedgeBatchEntries.Property(entity => entity.LeaseToken).HasColumnName("lease_token");
+
+        externalHedgeBatchEntries.HasIndex(entity => new { entity.CustomerAccountId, entity.ClientOrderId })
+            .IsUnique()
+            .HasDatabaseName("ux_external_hedge_batch_entries_customer_order");
+        externalHedgeBatchEntries.HasIndex(entity => new { entity.ExecutedAtUtc, entity.LeaseExpiresAtUtc, entity.AssetSymbol, entity.QuoteCurrency, entity.RequestedAtUtc })
+            .HasDatabaseName("ix_external_hedge_batch_entries_due_lookup");
+        externalHedgeBatchEntries.HasIndex(entity => entity.LeaseToken)
+            .HasDatabaseName("ix_external_hedge_batch_entries_lease_token");
     }
 }

@@ -236,6 +236,82 @@ namespace Exchange.CryptoTransactions.Infrastructure.Migrations
                     b.ToTable("crypto_transfer_idempotency_receipts", (string)null);
                 });
 
+            modelBuilder.Entity("Exchange.CryptoTransactions.Infrastructure.Persistence.ExternalHedgeBatchEntryEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("AssetSymbol")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("asset_symbol");
+
+                    b.Property<string>("ClientOrderId")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)")
+                        .HasColumnName("client_order_id");
+
+                    b.Property<string>("CustomerAccountId")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("customer_account_id");
+
+                    b.Property<DateTimeOffset?>("ExecutedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("executed_at_utc");
+
+                    b.Property<string>("ExecutedExternalOrderId")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)")
+                        .HasColumnName("executed_external_order_id");
+
+                    b.Property<DateTimeOffset?>("LeaseExpiresAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("lease_expires_at_utc");
+
+                    b.Property<string>("LeaseOwnerId")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)")
+                        .HasColumnName("lease_owner_id");
+
+                    b.Property<Guid?>("LeaseToken")
+                        .HasColumnType("uuid")
+                        .HasColumnName("lease_token");
+
+                    b.Property<decimal>("Quantity")
+                        .HasColumnType("numeric")
+                        .HasColumnName("quantity");
+
+                    b.Property<string>("QuoteCurrency")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("quote_currency");
+
+                    b.Property<DateTimeOffset>("RequestedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("requested_at_utc");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ExecutedAtUtc", "LeaseExpiresAtUtc", "AssetSymbol", "QuoteCurrency", "RequestedAtUtc")
+                        .HasDatabaseName("ix_external_hedge_batch_entries_due_lookup");
+
+                    b.HasIndex("LeaseToken")
+                        .HasDatabaseName("ix_external_hedge_batch_entries_lease_token");
+
+                    b.HasIndex("CustomerAccountId", "ClientOrderId")
+                        .IsUnique()
+                        .HasDatabaseName("ux_external_hedge_batch_entries_customer_order");
+
+                    b.ToTable("external_hedge_batch_entries", (string)null);
+                });
+
             modelBuilder.Entity("Exchange.CryptoTransactions.Infrastructure.Persistence.SettingsChangeOutboxEntryEntity", b =>
                 {
                     b.Property<Guid>("Id")

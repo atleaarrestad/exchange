@@ -15,7 +15,8 @@ public static class ServiceCollectionExtensions
     public static IServiceCollection AddCryptoTransactionsInfrastructure(
         this IServiceCollection services,
         IConfiguration configuration,
-        bool includeHostedServices = true)
+        bool includeBackgroundWorkers = true,
+        bool includeBootstrapWorker = true)
     {
         ArgumentNullException.ThrowIfNull(configuration);
 
@@ -58,17 +59,21 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IBrokeredCryptoBuyQuoteStore, InMemoryBrokeredCryptoBuyQuoteStore>();
         services.AddSingleton<ICryptoOwnershipLedger, InMemoryCryptoOwnershipLedger>();
         services.AddSingleton(TimeProvider.System);
-        services.AddSingleton<IExternalHedgeBatchQueue, InMemoryExternalHedgeBatchQueue>();
+        services.AddSingleton<IExternalHedgeBatchQueue, EfCoreExternalHedgeBatchQueue>();
         services.AddSingleton<IInternalReferencePriceFeed, StaticReferencePriceFeed>();
         services.AddSingleton<ILiveMarketPriceFeed, UnconfiguredLiveMarketPriceFeed>();
         services.AddSingleton<IExternalLiquidityHedgingGateway, UnconfiguredExternalLiquidityHedgingGateway>();
         services.AddSingleton<ICryptoTransferFundsReservationGateway, UnconfiguredCryptoTransferFundsReservationGateway>();
         services.AddSingleton<IBlockchainTransferGateway, RuntimeKrakenBlockchainTransferGateway>();
-        if (includeHostedServices)
+        if (includeBackgroundWorkers)
         {
             services.AddHostedService<CryptoTransferTimeoutReconciliationWorker>();
             services.AddHostedService<ExternalHedgeBatchExecutionWorker>();
             services.AddHostedService<SettingsChangeOutboxPublisherWorker>();
+        }
+
+        if (includeBootstrapWorker)
+        {
             services.AddHostedService<RuntimeSettingsBootstrapWorker>();
         }
         return services;

@@ -176,7 +176,6 @@ public sealed class EfCoreCryptoSettingsService(
             }
 
             await using var context = await dbContextFactory.CreateDbContextAsync(cancellationToken);
-            await context.Database.MigrateAsync(cancellationToken);
             await EnsureDefaultProfileExistsAsync(context, cancellationToken);
             await tradingPolicyProvider.RefreshAsync(null, cancellationToken);
             isInitialized = true;

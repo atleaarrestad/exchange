@@ -13,7 +13,10 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddControllers();
 builder.Services.AddProblemDetails();
 builder.Services.AddInfrastructureCaching();
-builder.Services.AddCryptoTransactionsInfrastructure(builder.Configuration, includeHostedServices: false);
+builder.Services.AddCryptoTransactionsInfrastructure(
+    builder.Configuration,
+    includeBackgroundWorkers: false,
+    includeBootstrapWorker: true);
 var messagingOptions = MessagingTransportOptions.FromConfiguration(builder.Configuration);
 
 var isSimulationEnabled = builder.Configuration.GetSection(ConfigurationKeys.SimulationSection)

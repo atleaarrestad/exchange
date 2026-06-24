@@ -176,7 +176,6 @@ public sealed class EfCoreCryptoGatewaySettingsService(
             }
 
             await using var context = await dbContextFactory.CreateDbContextAsync(cancellationToken);
-            await context.Database.MigrateAsync(cancellationToken);
             await EnsureDefaultGatewayProfileExistsAsync(context, cancellationToken);
             isInitialized = true;
         }

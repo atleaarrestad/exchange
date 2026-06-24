@@ -8,6 +8,8 @@ namespace Exchange.CryptoTransactions.Infrastructure.DependencyInjection;
 
 public sealed class RuntimeSettingsBootstrapWorker(
     IDbContextFactory<CryptoTransactionsDbContext> dbContextFactory,
+    ICryptoSettingsService cryptoSettingsService,
+    ICryptoGatewaySettingsService cryptoGatewaySettingsService,
     IBrokeredTradingPolicyProvider tradingPolicyProvider,
     IKrakenGatewayOptionsProvider krakenGatewayOptionsProvider) : IHostedService
 {
@@ -15,6 +17,8 @@ public sealed class RuntimeSettingsBootstrapWorker(
     {
         await using var context = await dbContextFactory.CreateDbContextAsync(cancellationToken);
         await context.Database.MigrateAsync(cancellationToken);
+        await cryptoSettingsService.GetAllAsync(cancellationToken);
+        await cryptoGatewaySettingsService.GetAllAsync(cancellationToken);
         await tradingPolicyProvider.RefreshAsync(null, cancellationToken);
         await krakenGatewayOptionsProvider.RefreshAsync(null, cancellationToken);
     }
