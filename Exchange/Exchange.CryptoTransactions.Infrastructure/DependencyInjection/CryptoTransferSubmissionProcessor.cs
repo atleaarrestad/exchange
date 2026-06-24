@@ -1,6 +1,9 @@
 using Exchange.CryptoTransactions.Application;
 using Exchange.CryptoTransactions.Application.Contracts;
 using Microsoft.Extensions.Logging;
+using Polly.Bulkhead;
+using Polly.CircuitBreaker;
+using Polly.Timeout;
 
 namespace Exchange.CryptoTransactions.Infrastructure.DependencyInjection;
 
@@ -65,6 +68,33 @@ public sealed class CryptoTransferSubmissionProcessor(
         {
             logger.LogWarning(
                 "Crypto transfer submission timed out for {SourceAccountId}/{AssetSymbol}/{IdempotencyKey}. Pending reconciliation will continue.",
+                operation.SourceAccountId,
+                operation.AssetSymbol.Value,
+                operation.IdempotencyKey);
+        }
+        catch (BrokenCircuitException exception)
+        {
+            logger.LogWarning(
+                exception,
+                "Crypto transfer submission deferred because blockchain gateway circuit is open for {SourceAccountId}/{AssetSymbol}/{IdempotencyKey}.",
+                operation.SourceAccountId,
+                operation.AssetSymbol.Value,
+                operation.IdempotencyKey);
+        }
+        catch (BulkheadRejectedException exception)
+        {
+            logger.LogWarning(
+                exception,
+                "Crypto transfer submission deferred because blockchain gateway bulkhead is saturated for {SourceAccountId}/{AssetSymbol}/{IdempotencyKey}.",
+                operation.SourceAccountId,
+                operation.AssetSymbol.Value,
+                operation.IdempotencyKey);
+        }
+        catch (TimeoutRejectedException exception)
+        {
+            logger.LogWarning(
+                exception,
+                "Crypto transfer submission deferred after resilience timeout for {SourceAccountId}/{AssetSymbol}/{IdempotencyKey}.",
                 operation.SourceAccountId,
                 operation.AssetSymbol.Value,
                 operation.IdempotencyKey);

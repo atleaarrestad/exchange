@@ -1,6 +1,7 @@
 using Exchange.CryptoTransactions.Application.Contracts;
 using Exchange.CryptoTransactions.Domain.ValueObjects;
 using System.Globalization;
+using System.Net;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -109,7 +110,10 @@ public sealed class KrakenBlockchainTransferGateway(
 
         if (!response.IsSuccessStatusCode)
         {
-            throw new BlockchainTransferRejectedException($"Kraken request failed with HTTP {(int)response.StatusCode}: {content}");
+            var transient = IsTransientHttpStatusCode(response.StatusCode);
+            throw new BlockchainTransferRejectedException(
+                $"Kraken request failed with HTTP {(int)response.StatusCode}: {content}",
+                transient);
         }
 
         var payload = JsonDocument.Parse(content);
@@ -127,7 +131,9 @@ public sealed class KrakenBlockchainTransferGateway(
         }
 
         payload.Dispose();
-        throw new BlockchainTransferRejectedException($"Kraken rejected request: {combinedErrors}");
+        throw new BlockchainTransferRejectedException(
+            $"Kraken rejected request: {combinedErrors}",
+            IsTransientKrakenError(errors));
     }
 
     private HttpRequestMessage CreateSignedRequest(string path, IReadOnlyList<KeyValuePair<string, string>> formValues)
@@ -281,6 +287,27 @@ public sealed class KrakenBlockchainTransferGateway(
     private static bool IsConfigurationError(string error)
     {
         return ConfigurationErrorPrefixes.Any(prefix => error.StartsWith(prefix, StringComparison.Ordinal));
+    }
+
+    private static bool IsTransientHttpStatusCode(HttpStatusCode statusCode)
+    {
+        var numericCode = (int)statusCode;
+        return numericCode == 429 || numericCode >= 500;
+    }
+
+    private static bool IsTransientKrakenError(IReadOnlyList<string> errors)
+    {
+        foreach (var error in errors)
+        {
+            if (error.StartsWith("EAPI:Rate limit exceeded", StringComparison.Ordinal)
+                || error.StartsWith("EService:Unavailable", StringComparison.Ordinal)
+                || error.StartsWith("EService:Busy", StringComparison.Ordinal))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static BlockchainTransferStatusKind MapStatus(string status)

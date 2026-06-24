@@ -96,6 +96,28 @@ public sealed class KrakenBlockchainTransferGatewayTests
         await Assert.ThrowsExactlyAsync<ExternalDependencyNotConfiguredException>(() => gateway.SubmitAsync(request));
     }
 
+    [TestMethod]
+    public async Task SubmitAsync_WithTransientHttpFailure_SetsTransientRejection()
+    {
+        var handler = new StubHttpMessageHandler((_, _) =>
+            new HttpResponseMessage(HttpStatusCode.ServiceUnavailable)
+            {
+                Content = new StringContent("""{"error":["EService:Unavailable"]}""", Encoding.UTF8, "application/json")
+            });
+        var gateway = CreateGateway(handler);
+        var request = new BlockchainTransferRequest(
+            "idem-5",
+            "account-1",
+            "bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kygt080",
+            AssetSymbol.Bitcoin,
+            0.25m,
+            0.001m,
+            0.251m);
+
+        var exception = await Assert.ThrowsExactlyAsync<BlockchainTransferRejectedException>(() => gateway.SubmitAsync(request));
+        Assert.IsTrue(exception.IsTransient);
+    }
+
     private static KrakenBlockchainTransferGateway CreateGateway(HttpMessageHandler handler)
     {
         var options = new KrakenBlockchainTransferGatewayOptions

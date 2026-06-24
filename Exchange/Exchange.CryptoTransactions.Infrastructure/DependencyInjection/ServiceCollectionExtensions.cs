@@ -4,6 +4,7 @@ using Exchange.CryptoTransactions.Application.Validation;
 using Exchange.CryptoTransactions.Infrastructure.Gateways;
 using Exchange.CryptoTransactions.Infrastructure.Messaging;
 using Exchange.CryptoTransactions.Infrastructure.Persistence;
+using Exchange.CryptoTransactions.Resilience.Gateways;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -24,6 +25,8 @@ public static class ServiceCollectionExtensions
             ?? InfrastructureConfigurationKeys.DefaultIdempotencyConnectionString;
         var timeoutReconciliationOptions = TimeoutReconciliationOptions.FromConfiguration(configuration);
         var krakenGatewayOptions = KrakenBlockchainTransferGatewayOptions.FromConfiguration(configuration);
+        var blockchainGatewayResilienceOptions = BlockchainGatewayResilienceOptions.FromConfiguration(configuration);
+        var blockchainGatewayResiliencePolicyOptions = blockchainGatewayResilienceOptions.ToPolicyOptions();
         var brokeredTradingOptions = BrokeredTradingOptions.FromConfiguration(configuration);
         var brokeredTradingPolicy = new BrokeredTradingPolicy
         {
@@ -42,6 +45,8 @@ public static class ServiceCollectionExtensions
         });
         services.AddSingleton(timeoutReconciliationOptions);
         services.AddSingleton(krakenGatewayOptions);
+        services.AddSingleton(blockchainGatewayResilienceOptions);
+        services.AddSingleton(blockchainGatewayResiliencePolicyOptions);
         services.AddSingleton(brokeredTradingOptions);
         services.AddSingleton(brokeredTradingPolicy);
         services.AddSingleton<IBrokeredTradingPolicyProvider, RuntimeBrokeredTradingPolicyProvider>();
@@ -67,7 +72,12 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<ILiveMarketPriceFeed, UnconfiguredLiveMarketPriceFeed>();
         services.AddSingleton<IExternalLiquidityHedgingGateway, UnconfiguredExternalLiquidityHedgingGateway>();
         services.AddSingleton<ICryptoTransferFundsReservationGateway, UnconfiguredCryptoTransferFundsReservationGateway>();
-        services.AddSingleton<IBlockchainTransferGateway, RuntimeKrakenBlockchainTransferGateway>();
+        services.AddSingleton<RuntimeKrakenBlockchainTransferGateway>();
+        services.AddSingleton<IBlockchainTransferGateway>(serviceProvider =>
+            new ResilientBlockchainTransferGateway(
+                serviceProvider.GetRequiredService<RuntimeKrakenBlockchainTransferGateway>(),
+                serviceProvider.GetRequiredService<BlockchainGatewayResiliencePolicyOptions>(),
+                serviceProvider.GetRequiredService<Microsoft.Extensions.Logging.ILogger<ResilientBlockchainTransferGateway>>()));
         services.AddSingleton<CryptoTransferSubmissionProcessor>();
         if (includeBackgroundWorkers)
         {

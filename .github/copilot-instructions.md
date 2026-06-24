@@ -131,6 +131,9 @@ Treat correctness, auditability, and safety as mandatory.
    - timeouts and circuit breaking are encouraged
    - retries are only allowed when the remote operation is idempotent and duplicate-safe
 5. Keep Polly policies behind infrastructure/application boundaries; domain models must stay policy-agnostic.
+6. Keep reusable resilience mechanics in the dedicated project `Exchange.CryptoTransactions.Resilience`.
+7. Keep business-specific failure semantics in the owning bounded context flow (for example which failures are deterministic vs transient, and compensating actions such as reserve release/commit).
+8. Do not classify transient failures by parsing exception messages; use explicit typed metadata (for example flags/fields on exception types) so circuit-breaker behavior is deterministic.
 
 ## Caching Strategy and Invalidation
 

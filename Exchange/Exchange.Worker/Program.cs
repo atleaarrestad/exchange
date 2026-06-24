@@ -3,6 +3,9 @@ using Exchange.CryptoTransactions.Infrastructure.Messaging;
 using Exchange.CryptoTransactions.Infrastructure.Simulation.DependencyInjection;
 using MassTransit;
 using Microsoft.Extensions.Hosting;
+using Polly.Bulkhead;
+using Polly.CircuitBreaker;
+using Polly.Timeout;
 
 var builder = Host.CreateApplicationBuilder(args);
 
@@ -21,6 +24,8 @@ var useRabbitMq = string.Equals(
     "rabbitmq",
     StringComparison.OrdinalIgnoreCase);
 var instanceId = ResolveInstanceId(builder.Configuration.GetValue<string>("Messaging:InstanceId"));
+const ushort cryptoTransferSubmissionPrefetchCount = 96;
+const int cryptoTransferSubmissionConcurrentMessageLimit = 32;
 
 builder.Services.AddMassTransit(configurator =>
 {
@@ -45,9 +50,15 @@ builder.Services.AddMassTransit(configurator =>
                 MessagingEndpointNames.CryptoTransferSubmission,
                 endpoint =>
                 {
-                    endpoint.PrefetchCount = 32;
-                    endpoint.ConcurrentMessageLimit = 16;
-                    endpoint.UseMessageRetry(retry => retry.Interval(3, TimeSpan.FromSeconds(2)));
+                    endpoint.PrefetchCount = cryptoTransferSubmissionPrefetchCount;
+                    endpoint.ConcurrentMessageLimit = cryptoTransferSubmissionConcurrentMessageLimit;
+                    endpoint.UseMessageRetry(retry =>
+                    {
+                        retry.Ignore<BrokenCircuitException>();
+                        retry.Ignore<BulkheadRejectedException>();
+                        retry.Ignore<TimeoutRejectedException>();
+                        retry.Interval(3, TimeSpan.FromSeconds(2));
+                    });
                     endpoint.ConfigureConsumer<CryptoTransferSubmissionRequestedConsumer>(context);
                 });
             cfg.ReceiveEndpoint(
@@ -66,8 +77,14 @@ builder.Services.AddMassTransit(configurator =>
             MessagingEndpointNames.CryptoTransferSubmission,
             endpoint =>
             {
-                endpoint.ConcurrentMessageLimit = 16;
-                endpoint.UseMessageRetry(retry => retry.Interval(3, TimeSpan.FromSeconds(2)));
+                endpoint.ConcurrentMessageLimit = cryptoTransferSubmissionConcurrentMessageLimit;
+                endpoint.UseMessageRetry(retry =>
+                {
+                    retry.Ignore<BrokenCircuitException>();
+                    retry.Ignore<BulkheadRejectedException>();
+                    retry.Ignore<TimeoutRejectedException>();
+                    retry.Interval(3, TimeSpan.FromSeconds(2));
+                });
                 endpoint.ConfigureConsumer<CryptoTransferSubmissionRequestedConsumer>(context);
             });
         cfg.ReceiveEndpoint(

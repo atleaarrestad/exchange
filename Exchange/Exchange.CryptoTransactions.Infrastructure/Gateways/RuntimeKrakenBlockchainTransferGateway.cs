@@ -52,7 +52,8 @@ public sealed class RuntimeKrakenBlockchainTransferGateway(
             httpClient = new HttpClient
             {
                 BaseAddress = new Uri(options.BaseUrl),
-                Timeout = TimeSpan.FromSeconds(options.HttpTimeoutSeconds)
+                // The resilience wrapper controls request timeouts via cancellation tokens.
+                Timeout = Timeout.InfiniteTimeSpan
             };
             gateway = new KrakenBlockchainTransferGateway(options, httpClient, timeProvider);
             cachedOptionsKey = optionsKey;
