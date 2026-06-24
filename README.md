@@ -1,6 +1,13 @@
 # exchange
 Blockchain exchange
 
+## Backend solution layout
+
+`Exchange/Exchange.slnx` contains two executable backend projects:
+
+- API: `Exchange/Exchange/Exchange.Api.csproj`
+- Worker: `Exchange/Exchange.Worker/Exchange.Worker.csproj`
+
 ## Frontend (Angular)
 
 Frontend apps are included in Visual Studio through `.esproj` entries in `Exchange.slnx`:
