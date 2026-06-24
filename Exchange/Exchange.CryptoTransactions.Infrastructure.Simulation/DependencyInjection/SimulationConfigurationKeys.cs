@@ -3,4 +3,5 @@ namespace Exchange.CryptoTransactions.Infrastructure.Simulation.DependencyInject
 public static class SimulationConfigurationKeys
 {
     public const string CryptoTransactionsSimulationSection = "CryptoTransactions:Simulation";
+    public const string BrokeredTradingSimulationSection = "CryptoTransactions:Simulation:BrokeredTrading";
 }

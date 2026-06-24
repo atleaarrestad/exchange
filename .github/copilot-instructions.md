@@ -10,6 +10,19 @@ Treat correctness, auditability, and safety as mandatory.
 3. Do not design or introduce central limit order book, maker/taker matching, or matching-engine workflows unless explicitly requested.
 4. External venue integrations are for hedging/rebalancing liquidity and risk, not customer-to-customer order matching.
 
+## Quote and Hedge Execution Behavior
+
+1. Quotes are for customer expectation and must be accurate at quote-time based on approved pricing feeds.
+2. If internal platform inventory/capital can cover the buy, assign ownership from internal inventory and do not execute an external buy for that customer.
+3. If internal inventory is insufficient, do not execute one external buy per customer; buffer external hedge demand and execute aggregated external hedge orders.
+4. Aggregated external hedge execution must be triggered by configurable limits:
+   - maximum buffer time
+   - maximum number of buffered customer buys
+5. Aggregated hedges execute at a new market price at execution-time; quoted customer price can be stale and this is acceptable within configured protection rules.
+6. Enforce configurable maximum slippage protection. Reject customer execution when observed slippage versus quote exceeds configured limits.
+7. Customer execution and external hedge execution are decoupled: customer execution uses the accepted quote (subject to slippage protection), while the later aggregated hedge uses then-current market execution price.
+8. Hedge batch execution must not be a synchronous dependency for customer execution; customer ownership assignment should complete first, and hedge execution/retry is handled asynchronously.
+
 ## Architecture and Design Rules
 
 1. **Strict separation of concerns is required**

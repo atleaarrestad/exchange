@@ -16,11 +16,15 @@ public static class ServiceCollectionExtensions
             simulationSection);
         var fundsReservationOptions = SimulatedFundsReservationOptions.FromConfiguration(
             simulationSection);
+        var simulatedMarketPricingOptions = SimulatedMarketPricingOptions.FromConfiguration(configuration);
 
         services.AddSingleton(blockchainGatewayOptions);
         services.AddSingleton(fundsReservationOptions);
+        services.AddSingleton(simulatedMarketPricingOptions);
         services.AddSingleton<IBlockchainTransferStrategy, SimulatedBitcoinTransferStrategy>();
         services.AddSingleton<IBlockchainTransferStrategy, SimulatedEtherTransferStrategy>();
+        services.AddSingleton<ILiveMarketPriceFeed, SimulatedLiveMarketPriceFeed>();
+        services.AddSingleton<IExternalLiquidityHedgingGateway, SimulatedExternalLiquidityHedgingGateway>();
         services.AddSingleton<ICryptoTransferFundsReservationGateway, SimulatedCryptoTransferFundsReservationGateway>();
         services.AddSingleton<IBlockchainTransferGateway, SimulatedBlockchainTransferGateway>();
         return services;

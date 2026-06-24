@@ -62,6 +62,22 @@ public sealed class ApiExceptionMappingMiddleware(
                 "Insufficient funds",
                 exception.Message);
         }
+        catch (PriceProtectionExceededException exception)
+        {
+            await WriteProblemAsync(
+                context,
+                StatusCodes.Status422UnprocessableEntity,
+                "Price protection exceeded",
+                exception.Message);
+        }
+        catch (QuoteExecutionRejectedException exception)
+        {
+            await WriteProblemAsync(
+                context,
+                StatusCodes.Status422UnprocessableEntity,
+                "Quote execution rejected",
+                exception.Message);
+        }
         catch (ExternalDependencyNotConfiguredException exception)
         {
             await WriteProblemAsync(
