@@ -43,7 +43,13 @@ public sealed class SubmitCryptoTransferValidationTests
         var fundsReservationGateway = new TrackingFundsReservationGateway();
         var validator = new SubmitCryptoTransferCommandValidator();
         var idempotencyStore = new InMemoryIdempotencyStore();
-        var service = new CryptoTransferService(fundsReservationGateway, idempotencyStore, new NoOpSubmissionSignal(), validator);
+        var transitionCoordinator = new CryptoTransferPendingTransitionCoordinator(fundsReservationGateway, idempotencyStore);
+        var service = new CryptoTransferService(
+            fundsReservationGateway,
+            idempotencyStore,
+            transitionCoordinator,
+            new NoOpSubmissionSignal(),
+            validator);
         var command = CreateValidCommand();
 
         var first = await service.SubmitAsync(command);
@@ -61,7 +67,13 @@ public sealed class SubmitCryptoTransferValidationTests
         var fundsReservationGateway = new TrackingFundsReservationGateway();
         var validator = new SubmitCryptoTransferCommandValidator();
         var idempotencyStore = new InMemoryIdempotencyStore();
-        var service = new CryptoTransferService(fundsReservationGateway, idempotencyStore, new NoOpSubmissionSignal(), validator);
+        var transitionCoordinator = new CryptoTransferPendingTransitionCoordinator(fundsReservationGateway, idempotencyStore);
+        var service = new CryptoTransferService(
+            fundsReservationGateway,
+            idempotencyStore,
+            transitionCoordinator,
+            new NoOpSubmissionSignal(),
+            validator);
 
         await service.SubmitAsync(CreateValidCommand());
         await service.SubmitAsync(CreateValidCommand() with { AssetSymbol = AssetSymbol.Ether.Value });
@@ -75,7 +87,13 @@ public sealed class SubmitCryptoTransferValidationTests
         var fundsReservationGateway = new TrackingFundsReservationGateway();
         var validator = new SubmitCryptoTransferCommandValidator();
         var idempotencyStore = new InMemoryIdempotencyStore();
-        var service = new CryptoTransferService(fundsReservationGateway, idempotencyStore, new NoOpSubmissionSignal(), validator);
+        var transitionCoordinator = new CryptoTransferPendingTransitionCoordinator(fundsReservationGateway, idempotencyStore);
+        var service = new CryptoTransferService(
+            fundsReservationGateway,
+            idempotencyStore,
+            transitionCoordinator,
+            new NoOpSubmissionSignal(),
+            validator);
 
         _ = await service.SubmitAsync(CreateValidCommand());
 
@@ -92,11 +110,18 @@ public sealed class SubmitCryptoTransferValidationTests
         };
         var validator = new SubmitCryptoTransferCommandValidator();
         var idempotencyStore = new InMemoryIdempotencyStore();
-        var service = new CryptoTransferService(fundsReservationGateway, idempotencyStore, new NoOpSubmissionSignal(), validator);
+        var transitionCoordinator = new CryptoTransferPendingTransitionCoordinator(fundsReservationGateway, idempotencyStore);
+        var service = new CryptoTransferService(
+            fundsReservationGateway,
+            idempotencyStore,
+            transitionCoordinator,
+            new NoOpSubmissionSignal(),
+            validator);
 
         await Assert.ThrowsExactlyAsync<InsufficientFundsException>(() => service.SubmitAsync(CreateValidCommand()));
 
         Assert.AreEqual(1, fundsReservationGateway.ReserveCallCount);
+        Assert.AreEqual(1, fundsReservationGateway.ReleaseCallCount);
         Assert.AreEqual(1, idempotencyStore.ReleaseCallCount);
     }
 
@@ -106,7 +131,13 @@ public sealed class SubmitCryptoTransferValidationTests
         var fundsReservationGateway = new TrackingFundsReservationGateway();
         var validator = new SubmitCryptoTransferCommandValidator();
         var idempotencyStore = new InMemoryIdempotencyStore();
-        var service = new CryptoTransferService(fundsReservationGateway, idempotencyStore, new NoOpSubmissionSignal(), validator);
+        var transitionCoordinator = new CryptoTransferPendingTransitionCoordinator(fundsReservationGateway, idempotencyStore);
+        var service = new CryptoTransferService(
+            fundsReservationGateway,
+            idempotencyStore,
+            transitionCoordinator,
+            new NoOpSubmissionSignal(),
+            validator);
 
         await Assert.ThrowsExactlyAsync<ApplicationValidationException>(() =>
             service.SubmitAsync(CreateValidCommand() with { AssetSymbol = "USDT" }));
@@ -232,6 +263,7 @@ public sealed class SubmitCryptoTransferValidationTests
     {
         public bool ThrowInsufficientFunds { get; init; }
         public int ReserveCallCount { get; private set; }
+        public int ReleaseCallCount { get; private set; }
 
         public Task ReserveAsync(
             string sourceAccountId,
@@ -267,6 +299,7 @@ public sealed class SubmitCryptoTransferValidationTests
             CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            ReleaseCallCount++;
             return Task.CompletedTask;
         }
     }

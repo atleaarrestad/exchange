@@ -68,6 +68,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<ICryptoGatewayResilienceSettingsCommandValidator, CryptoGatewayResilienceSettingsCommandValidator>();
         services.AddSingleton<ICryptoTransferIdempotencyStore>(serviceProvider =>
             new EfCoreCryptoTransferIdempotencyStore(serviceProvider.GetRequiredService<IDbContextFactory<CryptoTransactionsDbContext>>()));
+        services.AddSingleton<ICryptoTransferPendingTransitionCoordinator, CryptoTransferPendingTransitionCoordinator>();
         services.AddSingleton<ICryptoTransferSubmissionSignal, CryptoTransferSubmissionSignal>();
         services.AddSingleton<ICryptoTransferService, CryptoTransferService>();
         services.AddSingleton<ICryptoSettingsService, EfCoreCryptoSettingsService>();

@@ -10,6 +10,7 @@ namespace Exchange.CryptoTransactions.Application;
 public sealed class CryptoTransferService(
     ICryptoTransferFundsReservationGateway fundsReservationGateway,
     ICryptoTransferIdempotencyStore idempotencyStore,
+    ICryptoTransferPendingTransitionCoordinator pendingTransitionCoordinator,
     ICryptoTransferSubmissionSignal submissionSignal,
     ISubmitCryptoTransferCommandValidator commandValidator) : ICryptoTransferService
 {
@@ -77,13 +78,10 @@ public sealed class CryptoTransferService(
                 or ArgumentException
                 or ExternalDependencyNotConfiguredException)
             {
-                var released = await idempotencyStore.TryReleasePendingAsync(operation, CancellationToken.None);
-                if (!released)
-                {
-                    throw new InvalidOperationException(
-                        $"Unable to release pending transfer '{sourceAccountId}/{assetSymbol.Value}/{idempotencyKey}' after reservation failure.",
-                        exception);
-                }
+                await pendingTransitionCoordinator.ReleaseAndDropPendingAsync(
+                    operation,
+                    "deterministic reservation/signaling failure",
+                    CancellationToken.None);
 
                 throw;
             }

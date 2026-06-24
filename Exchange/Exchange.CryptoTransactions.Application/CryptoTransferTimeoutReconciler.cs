@@ -5,8 +5,8 @@ namespace Exchange.CryptoTransactions.Application;
 
 public sealed class CryptoTransferTimeoutReconciler(
     IBlockchainTransferGateway blockchainTransferGateway,
-    ICryptoTransferFundsReservationGateway fundsReservationGateway,
-    ICryptoTransferIdempotencyStore idempotencyStore) : ICryptoTransferTimeoutReconciler
+    ICryptoTransferIdempotencyStore idempotencyStore,
+    ICryptoTransferPendingTransitionCoordinator pendingTransitionCoordinator) : ICryptoTransferTimeoutReconciler
 {
     private static readonly TimeSpan NotSubmittedReleaseSafetyWindow = TimeSpan.FromMinutes(2);
 
@@ -45,18 +45,10 @@ public sealed class CryptoTransferTimeoutReconciler(
                     continue;
                 }
 
-                await fundsReservationGateway.ReleaseAsync(
-                    operation.SourceAccountId,
-                    operation.AssetSymbol,
-                    operation.IdempotencyKey,
+                await pendingTransitionCoordinator.ReleaseAndDropPendingAsync(
+                    operation,
+                    "reconciliation release",
                     cancellationToken);
-
-                var released = await idempotencyStore.TryReleasePendingAsync(operation, cancellationToken);
-                if (!released)
-                {
-                    throw new InvalidOperationException(
-                        $"Unable to transition pending transfer '{operation.SourceAccountId}/{operation.AssetSymbol.Value}/{operation.IdempotencyKey}' to released state after funds release.");
-                }
                 continue;
             }
 
@@ -72,18 +64,7 @@ public sealed class CryptoTransferTimeoutReconciler(
                 operation.TotalDebit,
                 transferStatus.RequiredConfirmations);
 
-            await fundsReservationGateway.CommitAsync(
-                operation.SourceAccountId,
-                operation.AssetSymbol,
-                operation.IdempotencyKey,
-                cancellationToken);
-
-            var markedCompleted = await idempotencyStore.TryMarkCompletedAsync(operation, receipt, cancellationToken);
-            if (!markedCompleted)
-            {
-                throw new InvalidOperationException(
-                    $"Unable to transition pending transfer '{operation.SourceAccountId}/{operation.AssetSymbol.Value}/{operation.IdempotencyKey}' to completed state after funds commit.");
-            }
+            await pendingTransitionCoordinator.CommitAndMarkCompletedAsync(operation, receipt, cancellationToken);
         }
 
         if (unknownOperations.Count > 0)

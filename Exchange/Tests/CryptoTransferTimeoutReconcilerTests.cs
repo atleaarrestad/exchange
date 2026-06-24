@@ -28,7 +28,8 @@ public sealed class CryptoTransferTimeoutReconcilerTests
             DateTimeOffset.UtcNow.AddMinutes(-9),
             3));
         var fundsGateway = new TrackingFundsGateway();
-        var reconciler = new CryptoTransferTimeoutReconciler(gateway, fundsGateway, idempotencyStore);
+        var transitionCoordinator = new CryptoTransferPendingTransitionCoordinator(fundsGateway, idempotencyStore);
+        var reconciler = new CryptoTransferTimeoutReconciler(gateway, idempotencyStore, transitionCoordinator);
 
         await reconciler.ReconcileAsync(DateTimeOffset.UtcNow.AddMinutes(-1));
 
@@ -55,7 +56,8 @@ public sealed class CryptoTransferTimeoutReconcilerTests
         var idempotencyStore = new TrackingIdempotencyStore(operation);
         var gateway = new TrackingGateway(new BlockchainTransferStatus(BlockchainTransferStatusKind.NotSubmitted));
         var fundsGateway = new TrackingFundsGateway();
-        var reconciler = new CryptoTransferTimeoutReconciler(gateway, fundsGateway, idempotencyStore);
+        var transitionCoordinator = new CryptoTransferPendingTransitionCoordinator(fundsGateway, idempotencyStore);
+        var reconciler = new CryptoTransferTimeoutReconciler(gateway, idempotencyStore, transitionCoordinator);
 
         await reconciler.ReconcileAsync(DateTimeOffset.UtcNow.AddMinutes(-1));
 
@@ -83,7 +85,8 @@ public sealed class CryptoTransferTimeoutReconcilerTests
         var idempotencyStore = new TrackingIdempotencyStore(operation);
         var gateway = new TrackingGateway(new BlockchainTransferStatus(BlockchainTransferStatusKind.NotSubmitted));
         var fundsGateway = new TrackingFundsGateway();
-        var reconciler = new CryptoTransferTimeoutReconciler(gateway, fundsGateway, idempotencyStore);
+        var transitionCoordinator = new CryptoTransferPendingTransitionCoordinator(fundsGateway, idempotencyStore);
+        var reconciler = new CryptoTransferTimeoutReconciler(gateway, idempotencyStore, transitionCoordinator);
 
         await reconciler.ReconcileAsync(DateTimeOffset.UtcNow.AddMinutes(-1));
 
@@ -111,7 +114,8 @@ public sealed class CryptoTransferTimeoutReconcilerTests
         var idempotencyStore = new TrackingIdempotencyStore(operation);
         var gateway = new TrackingGateway(new BlockchainTransferStatus(BlockchainTransferStatusKind.Unknown));
         var fundsGateway = new TrackingFundsGateway();
-        var reconciler = new CryptoTransferTimeoutReconciler(gateway, fundsGateway, idempotencyStore);
+        var transitionCoordinator = new CryptoTransferPendingTransitionCoordinator(fundsGateway, idempotencyStore);
+        var reconciler = new CryptoTransferTimeoutReconciler(gateway, idempotencyStore, transitionCoordinator);
 
         await Assert.ThrowsExactlyAsync<UnknownBlockchainTransferStatusException>(() =>
             reconciler.ReconcileAsync(DateTimeOffset.UtcNow.AddMinutes(-1)));
@@ -147,7 +151,8 @@ public sealed class CryptoTransferTimeoutReconcilerTests
             DateTimeOffset.UtcNow.AddMinutes(-9),
             2));
         var fundsGateway = new TrackingFundsGateway();
-        var reconciler = new CryptoTransferTimeoutReconciler(gateway, fundsGateway, idempotencyStore);
+        var transitionCoordinator = new CryptoTransferPendingTransitionCoordinator(fundsGateway, idempotencyStore);
+        var reconciler = new CryptoTransferTimeoutReconciler(gateway, idempotencyStore, transitionCoordinator);
 
         await reconciler.ReconcileAsync(DateTimeOffset.UtcNow.AddMinutes(-1));
 

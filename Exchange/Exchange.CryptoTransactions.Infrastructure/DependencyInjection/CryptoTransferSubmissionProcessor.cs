@@ -10,7 +10,7 @@ namespace Exchange.CryptoTransactions.Infrastructure.DependencyInjection;
 public sealed class CryptoTransferSubmissionProcessor(
     ICryptoTransferIdempotencyStore idempotencyStore,
     IBlockchainTransferGateway blockchainTransferGateway,
-    ICryptoTransferFundsReservationGateway fundsReservationGateway,
+    ICryptoTransferPendingTransitionCoordinator pendingTransitionCoordinator,
     ILogger<CryptoTransferSubmissionProcessor> logger)
 {
     private static readonly TimeSpan GatewaySubmitTimeout = TimeSpan.FromSeconds(30);
@@ -42,13 +42,7 @@ public sealed class CryptoTransferSubmissionProcessor(
                     operation.TotalDebit),
                 linkedCts.Token);
 
-            await fundsReservationGateway.CommitAsync(
-                operation.SourceAccountId,
-                operation.AssetSymbol,
-                operation.IdempotencyKey,
-                cancellationToken);
-
-            var completed = await idempotencyStore.TryMarkCompletedAsync(
+            await pendingTransitionCoordinator.CommitAndMarkCompletedAsync(
                 operation,
                 new CryptoTransferReceipt(
                     Guid.CreateVersion7(),
@@ -58,11 +52,6 @@ public sealed class CryptoTransferSubmissionProcessor(
                     gatewayResult.RequiredConfirmations,
                     CryptoTransferReceiptStatus.Submitted),
                 cancellationToken);
-            if (!completed)
-            {
-                throw new InvalidOperationException(
-                    $"Unable to mark crypto transfer '{operation.SourceAccountId}/{operation.AssetSymbol.Value}/{operation.IdempotencyKey}' as completed after successful gateway submission.");
-            }
         }
         catch (OperationCanceledException) when (timeoutCts.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
         {
@@ -103,19 +92,10 @@ public sealed class CryptoTransferSubmissionProcessor(
             exception is BlockchainTransferRejectedException
             or ExternalDependencyNotConfiguredException)
         {
-            await fundsReservationGateway.ReleaseAsync(
-                operation.SourceAccountId,
-                operation.AssetSymbol,
-                operation.IdempotencyKey,
+            await pendingTransitionCoordinator.ReleaseAndDropPendingAsync(
+                operation,
+                "deterministic submission failure",
                 cancellationToken);
-
-            var released = await idempotencyStore.TryReleasePendingAsync(operation, cancellationToken);
-            if (!released)
-            {
-                throw new InvalidOperationException(
-                    $"Unable to release pending crypto transfer '{operation.SourceAccountId}/{operation.AssetSymbol.Value}/{operation.IdempotencyKey}' after deterministic submission failure.",
-                    exception);
-            }
 
             logger.LogWarning(
                 exception,
