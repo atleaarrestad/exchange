@@ -1,5 +1,6 @@
 using MassTransit;
 using Exchange.Configuration;
+using Exchange.BrokeredBuys.Messaging;
 using Exchange.CryptoTransactions.Infrastructure.DependencyInjection;
 using Exchange.CryptoTransactions.Infrastructure.Messaging;
 using Exchange.CryptoTransactions.Infrastructure.Simulation.DependencyInjection;
@@ -34,6 +35,12 @@ builder.Services.AddMassTransit(configurator =>
 {
     configurator.SetKebabCaseEndpointNameFormatter();
     configurator.AddSettingsChangeConsumers();
+    configurator.AddSagaStateMachine<BrokeredFiatCryptoBuyStateMachine, BrokeredFiatCryptoBuySagaState>()
+        .InMemoryRepository();
+    configurator.AddConsumer<ReserveFiatForBrokeredBuyConsumer>();
+    configurator.AddConsumer<BookCryptoForBrokeredBuyConsumer>();
+    configurator.AddConsumer<CaptureFiatForBrokeredBuyConsumer>();
+    configurator.AddConsumer<ReleaseFiatReservationForBrokeredBuyConsumer>();
 
     if (messagingOptions.UseRabbitMq)
     {
@@ -47,6 +54,18 @@ builder.Services.AddMassTransit(configurator =>
                     host.Username(messagingOptions.RabbitMq.Username);
                     host.Password(messagingOptions.RabbitMq.Password);
                 });
+            cfg.ReceiveEndpoint(
+                "brokered-fiat-crypto-buy-saga",
+                endpoint =>
+                {
+                    endpoint.StateMachineSaga(
+                        context.GetRequiredService<BrokeredFiatCryptoBuyStateMachine>(),
+                        context.GetRequiredService<ISagaRepository<BrokeredFiatCryptoBuySagaState>>());
+                });
+            cfg.ReceiveEndpoint("reserve-fiat-for-brokered-buy", endpoint => endpoint.ConfigureConsumer<ReserveFiatForBrokeredBuyConsumer>(context));
+            cfg.ReceiveEndpoint("book-crypto-for-brokered-buy", endpoint => endpoint.ConfigureConsumer<BookCryptoForBrokeredBuyConsumer>(context));
+            cfg.ReceiveEndpoint("capture-fiat-for-brokered-buy", endpoint => endpoint.ConfigureConsumer<CaptureFiatForBrokeredBuyConsumer>(context));
+            cfg.ReceiveEndpoint("release-fiat-reservation-for-brokered-buy", endpoint => endpoint.ConfigureConsumer<ReleaseFiatReservationForBrokeredBuyConsumer>(context));
             SettingsFanoutEndpointRegistration.ConfigureFanoutEndpoints(
                 (endpointName, configureEndpoint) => cfg.ReceiveEndpoint(endpointName, configureEndpoint),
                 CryptoSettingsChangeMassTransitRegistration.BuildFanoutSubscriptions(context),
@@ -57,6 +76,18 @@ builder.Services.AddMassTransit(configurator =>
 
     configurator.UsingInMemory((context, cfg) =>
     {
+        cfg.ReceiveEndpoint(
+            "brokered-fiat-crypto-buy-saga",
+            endpoint =>
+            {
+                endpoint.StateMachineSaga(
+                    context.GetRequiredService<BrokeredFiatCryptoBuyStateMachine>(),
+                    context.GetRequiredService<ISagaRepository<BrokeredFiatCryptoBuySagaState>>());
+            });
+        cfg.ReceiveEndpoint("reserve-fiat-for-brokered-buy", endpoint => endpoint.ConfigureConsumer<ReserveFiatForBrokeredBuyConsumer>(context));
+        cfg.ReceiveEndpoint("book-crypto-for-brokered-buy", endpoint => endpoint.ConfigureConsumer<BookCryptoForBrokeredBuyConsumer>(context));
+        cfg.ReceiveEndpoint("capture-fiat-for-brokered-buy", endpoint => endpoint.ConfigureConsumer<CaptureFiatForBrokeredBuyConsumer>(context));
+        cfg.ReceiveEndpoint("release-fiat-reservation-for-brokered-buy", endpoint => endpoint.ConfigureConsumer<ReleaseFiatReservationForBrokeredBuyConsumer>(context));
         SettingsFanoutEndpointRegistration.ConfigureFanoutEndpoints(
             (endpointName, configureEndpoint) => cfg.ReceiveEndpoint(endpointName, configureEndpoint),
             CryptoSettingsChangeMassTransitRegistration.BuildFanoutSubscriptions(context),

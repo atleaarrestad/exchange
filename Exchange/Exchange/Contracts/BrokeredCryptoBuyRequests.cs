@@ -15,3 +15,9 @@ public sealed record ExecuteBrokeredCryptoBuyRequest(
     string QuoteCurrency,
     decimal? MaxUnitPrice = null,
     decimal? MaxTotalCost = null);
+
+public sealed record SubmitBrokeredCryptoBuyWorkflowResponse(
+    Guid CorrelationId,
+    string ClientOrderId,
+    string CustomerAccountId,
+    string Status);

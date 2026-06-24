@@ -22,6 +22,23 @@ public interface IFiatLedger
         FiatLedgerBrokeredBuyPostingCommand command,
         CancellationToken cancellationToken = default);
 
+    Task<FiatBrokeredBuyReservationReceipt?> GetRecordedBrokeredBuyReservationAsync(
+        string customerAccountId,
+        string clientOrderId,
+        CancellationToken cancellationToken = default);
+
+    Task<FiatBrokeredBuyReservationReceipt> ReserveBrokeredBuyFundsAsync(
+        FiatLedgerBrokeredBuyReservationCommand command,
+        CancellationToken cancellationToken = default);
+
+    Task<FiatBrokeredBuySettlementReceipt> CaptureReservedBrokeredBuySettlementAsync(
+        FiatLedgerBrokeredBuyReservationCaptureCommand command,
+        CancellationToken cancellationToken = default);
+
+    Task<FiatBrokeredBuyReservationReleaseReceipt> ReleaseReservedBrokeredBuyFundsAsync(
+        FiatLedgerBrokeredBuyReservationReleaseCommand command,
+        CancellationToken cancellationToken = default);
+
     Task<FiatBankSettlementReceipt?> GetRecordedBankSettlementAsync(
         string bankReferenceId,
         CancellationToken cancellationToken = default);

@@ -226,6 +226,95 @@ public sealed class EfCoreFiatLedgerTests
         }
     }
 
+    [TestMethod]
+    public async Task ReserveCaptureAndReleaseBrokeredBuyFundsAsync_MovesBalancesBetweenExpectedAccounts()
+    {
+        var ledger = CreateLedger(out var databaseName, out var connectionString);
+        try
+        {
+            var reserved = await ledger.ReserveBrokeredBuyFundsAsync(
+                new FiatLedgerBrokeredBuyReservationCommand(
+                    "client-order-fiat-reserve-1",
+                    "customer-fiat-1",
+                    FiatCurrency.NorwegianKrone,
+                    1_100m,
+                    DateTimeOffset.UtcNow));
+            Assert.AreEqual(1_100m, reserved.ReservedAmount);
+
+            await ledger.CaptureReservedBrokeredBuySettlementAsync(
+                new FiatLedgerBrokeredBuyReservationCaptureCommand(
+                    "client-order-fiat-reserve-1",
+                    "customer-fiat-1",
+                    FiatCurrency.NorwegianKrone,
+                    1_100m,
+                    DateTimeOffset.UtcNow));
+
+            await ledger.ReserveBrokeredBuyFundsAsync(
+                new FiatLedgerBrokeredBuyReservationCommand(
+                    "client-order-fiat-reserve-2",
+                    "customer-fiat-2",
+                    FiatCurrency.NorwegianKrone,
+                    900m,
+                    DateTimeOffset.UtcNow));
+            await ledger.ReleaseReservedBrokeredBuyFundsAsync(
+                new FiatLedgerBrokeredBuyReservationReleaseCommand(
+                    "client-order-fiat-reserve-2",
+                    "customer-fiat-2",
+                    FiatCurrency.NorwegianKrone,
+                    900m,
+                    DateTimeOffset.UtcNow));
+
+            var dbOptions = new DbContextOptionsBuilder<FiatTransactionsDbContext>()
+                .UseNpgsql(connectionString)
+                .Options;
+            await using var context = new FiatTransactionsDbContext(dbOptions);
+
+            var customer1Available = await context.FiatBalancePositions
+                .AsNoTracking()
+                .SingleAsync(position =>
+                    position.FiatCurrency == FiatCurrency.NorwegianKrone.Value &&
+                    position.AccountKind == FiatLedgerAccountKinds.CustomerAvailable &&
+                    position.AccountId == "customer-fiat-1");
+            Assert.AreEqual(48_900m, customer1Available.AvailableAmount);
+
+            var customer1Reserved = await context.FiatBalancePositions
+                .AsNoTracking()
+                .SingleAsync(position =>
+                    position.FiatCurrency == FiatCurrency.NorwegianKrone.Value &&
+                    position.AccountKind == FiatLedgerAccountKinds.CustomerReserved &&
+                    position.AccountId == "customer-fiat-1");
+            Assert.AreEqual(0m, customer1Reserved.AvailableAmount);
+
+            var customer2Available = await context.FiatBalancePositions
+                .AsNoTracking()
+                .SingleAsync(position =>
+                    position.FiatCurrency == FiatCurrency.NorwegianKrone.Value &&
+                    position.AccountKind == FiatLedgerAccountKinds.CustomerAvailable &&
+                    position.AccountId == "customer-fiat-2");
+            Assert.AreEqual(50_000m, customer2Available.AvailableAmount);
+
+            var customer2Reserved = await context.FiatBalancePositions
+                .AsNoTracking()
+                .SingleAsync(position =>
+                    position.FiatCurrency == FiatCurrency.NorwegianKrone.Value &&
+                    position.AccountKind == FiatLedgerAccountKinds.CustomerReserved &&
+                    position.AccountId == "customer-fiat-2");
+            Assert.AreEqual(0m, customer2Reserved.AvailableAmount);
+
+            var clearing = await context.FiatBalancePositions
+                .AsNoTracking()
+                .SingleAsync(position =>
+                    position.FiatCurrency == FiatCurrency.NorwegianKrone.Value &&
+                    position.AccountKind == FiatLedgerAccountKinds.PlatformTradeClearing &&
+                    position.AccountId == FiatLedgerAccountIds.Platform);
+            Assert.AreEqual(1_100m, clearing.AvailableAmount);
+        }
+        finally
+        {
+            DropDatabaseIfExists(databaseName);
+        }
+    }
+
     private static EfCoreFiatLedger CreateLedger(out string databaseName, out string connectionString)
     {
         EnsurePostgresReachable();

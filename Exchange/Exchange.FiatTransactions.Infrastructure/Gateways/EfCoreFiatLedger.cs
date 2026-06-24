@@ -69,6 +69,448 @@ public sealed class EfCoreFiatLedger(
         return settlement is null ? null : Map(settlement);
     }
 
+    public async Task<FiatBrokeredBuyReservationReceipt?> GetRecordedBrokeredBuyReservationAsync(
+        string customerAccountId,
+        string clientOrderId,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(customerAccountId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(clientOrderId);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var normalizedCustomerAccountId = customerAccountId.Trim();
+        var normalizedClientOrderId = clientOrderId.Trim();
+        var operationId = BuildOperationId(normalizedCustomerAccountId, normalizedClientOrderId);
+        await using var context = await dbContextFactory.CreateDbContextAsync(cancellationToken);
+
+        var transaction = await context.FiatLedgerTransactions
+            .AsNoTracking()
+            .SingleOrDefaultAsync(
+                candidate => candidate.OperationType == FiatLedgerOperationTypes.BrokeredCryptoBuyReservation
+                    && candidate.OperationId == operationId,
+                cancellationToken);
+        if (transaction is null)
+        {
+            return null;
+        }
+
+        var reservedEntry = await context.FiatLedgerEntries
+            .AsNoTracking()
+            .SingleOrDefaultAsync(
+                candidate => candidate.TransactionId == transaction.Id
+                    && candidate.Sequence == 2
+                    && candidate.AccountKind == FiatLedgerAccountKinds.CustomerReserved
+                    && candidate.AccountId == normalizedCustomerAccountId
+                    && candidate.Direction == FiatLedgerEntryDirection.Increase,
+                cancellationToken);
+        if (reservedEntry is null)
+        {
+            throw new InvalidOperationException(
+                $"Fiat reservation transaction '{transaction.Id}' is missing reserved balance journal entry.");
+        }
+
+        return new FiatBrokeredBuyReservationReceipt(
+            normalizedClientOrderId,
+            normalizedCustomerAccountId,
+            reservedEntry.FiatCurrency,
+            reservedEntry.Amount,
+            transaction.ExecutedAtUtc);
+    }
+
+    public async Task<FiatBrokeredBuyReservationReceipt> ReserveBrokeredBuyFundsAsync(
+        FiatLedgerBrokeredBuyReservationCommand command,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(command);
+        cancellationToken.ThrowIfCancellationRequested();
+        Validate(command);
+
+        var normalizedCustomerAccountId = command.CustomerAccountId.Trim();
+        var normalizedClientOrderId = command.ClientOrderId.Trim();
+        var operationId = BuildOperationId(normalizedCustomerAccountId, normalizedClientOrderId);
+
+        await using var context = await dbContextFactory.CreateDbContextAsync(cancellationToken);
+        await using var transaction = await context.Database.BeginTransactionAsync(cancellationToken);
+
+        var existingTransaction = await context.FiatLedgerTransactions
+            .AsNoTracking()
+            .SingleOrDefaultAsync(
+                candidate => candidate.OperationType == FiatLedgerOperationTypes.BrokeredCryptoBuyReservation
+                    && candidate.OperationId == operationId,
+                cancellationToken);
+        if (existingTransaction is not null)
+        {
+            var existing = await GetRecordedBrokeredBuyReservationAsync(
+                normalizedCustomerAccountId,
+                normalizedClientOrderId,
+                cancellationToken);
+            if (existing is null)
+            {
+                throw new InvalidOperationException(
+                    $"Reservation transaction '{existingTransaction.Id}' exists without a materialized receipt.");
+            }
+
+            EnsureMatchingDuplicate(command, existing);
+            await transaction.RollbackAsync(cancellationToken);
+            return existing;
+        }
+
+        var now = timeProvider.GetUtcNow();
+        await DecreaseBalanceAsync(
+            context,
+            command.FiatCurrency.Value,
+            FiatLedgerAccountKinds.CustomerAvailable,
+            normalizedCustomerAccountId,
+            command.ReservedAmount,
+            now,
+            cancellationToken);
+        await IncreaseBalanceAsync(
+            context,
+            command.FiatCurrency.Value,
+            FiatLedgerAccountKinds.CustomerReserved,
+            normalizedCustomerAccountId,
+            command.ReservedAmount,
+            now,
+            cancellationToken);
+
+        var transactionId = Guid.CreateVersion7();
+        context.FiatLedgerTransactions.Add(new FiatLedgerTransactionEntity
+        {
+            Id = transactionId,
+            OperationType = FiatLedgerOperationTypes.BrokeredCryptoBuyReservation,
+            OperationId = operationId,
+            ExecutedAtUtc = command.ReservedAtUtc,
+            CreatedAtUtc = now
+        });
+        context.FiatLedgerEntries.AddRange(
+            new FiatLedgerEntryEntity
+            {
+                Id = Guid.CreateVersion7(),
+                TransactionId = transactionId,
+                Sequence = 1,
+                FiatCurrency = command.FiatCurrency.Value,
+                AccountKind = FiatLedgerAccountKinds.CustomerAvailable,
+                AccountId = normalizedCustomerAccountId,
+                Direction = FiatLedgerEntryDirection.Decrease,
+                Amount = command.ReservedAmount,
+                CreatedAtUtc = now
+            },
+            new FiatLedgerEntryEntity
+            {
+                Id = Guid.CreateVersion7(),
+                TransactionId = transactionId,
+                Sequence = 2,
+                FiatCurrency = command.FiatCurrency.Value,
+                AccountKind = FiatLedgerAccountKinds.CustomerReserved,
+                AccountId = normalizedCustomerAccountId,
+                Direction = FiatLedgerEntryDirection.Increase,
+                Amount = command.ReservedAmount,
+                CreatedAtUtc = now
+            });
+
+        try
+        {
+            await context.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+        }
+        catch (DbUpdateException exception) when (UniqueConstraintViolationDetector.IsUniqueConstraintViolation(exception))
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            var duplicate = await GetRecordedBrokeredBuyReservationAsync(
+                normalizedCustomerAccountId,
+                normalizedClientOrderId,
+                cancellationToken);
+            if (duplicate is null)
+            {
+                throw;
+            }
+
+            EnsureMatchingDuplicate(command, duplicate);
+            return duplicate;
+        }
+
+        return new FiatBrokeredBuyReservationReceipt(
+            normalizedClientOrderId,
+            normalizedCustomerAccountId,
+            command.FiatCurrency.Value,
+            command.ReservedAmount,
+            command.ReservedAtUtc);
+    }
+
+    public async Task<FiatBrokeredBuySettlementReceipt> CaptureReservedBrokeredBuySettlementAsync(
+        FiatLedgerBrokeredBuyReservationCaptureCommand command,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(command);
+        cancellationToken.ThrowIfCancellationRequested();
+        Validate(command);
+
+        var normalizedCustomerAccountId = command.CustomerAccountId.Trim();
+        var normalizedClientOrderId = command.ClientOrderId.Trim();
+
+        await using var context = await dbContextFactory.CreateDbContextAsync(cancellationToken);
+        await using var transaction = await context.Database.BeginTransactionAsync(cancellationToken);
+
+        var existing = await context.BrokeredCryptoBuySettlements
+            .SingleOrDefaultAsync(
+                candidate => candidate.CustomerAccountId == normalizedCustomerAccountId
+                    && candidate.ClientOrderId == normalizedClientOrderId,
+                cancellationToken);
+        if (existing is not null)
+        {
+            var existingReceipt = Map(existing);
+            EnsureMatchingDuplicate(command, existingReceipt);
+            await transaction.RollbackAsync(cancellationToken);
+            return existingReceipt;
+        }
+
+        var now = timeProvider.GetUtcNow();
+        await DecreaseBalanceAsync(
+            context,
+            command.FiatCurrency.Value,
+            FiatLedgerAccountKinds.CustomerReserved,
+            normalizedCustomerAccountId,
+            command.CustomerDebitAmount,
+            now,
+            cancellationToken);
+        await IncreaseBalanceAsync(
+            context,
+            command.FiatCurrency.Value,
+            FiatLedgerAccountKinds.PlatformTradeClearing,
+            FiatLedgerAccountIds.Platform,
+            command.CustomerDebitAmount,
+            now,
+            cancellationToken);
+
+        context.BrokeredCryptoBuySettlements.Add(new BrokeredCryptoBuySettlementEntity
+        {
+            Id = Guid.CreateVersion7(),
+            ClientOrderId = normalizedClientOrderId,
+            CustomerAccountId = normalizedCustomerAccountId,
+            FiatCurrency = command.FiatCurrency.Value,
+            CustomerDebitAmount = command.CustomerDebitAmount,
+            ExecutedAtUtc = command.ExecutedAtUtc,
+            CreatedAtUtc = now
+        });
+
+        var operationId = BuildOperationId(normalizedCustomerAccountId, normalizedClientOrderId);
+        var transactionId = Guid.CreateVersion7();
+        context.FiatLedgerTransactions.Add(new FiatLedgerTransactionEntity
+        {
+            Id = transactionId,
+            OperationType = FiatLedgerOperationTypes.BrokeredCryptoBuySettlement,
+            OperationId = operationId,
+            ExecutedAtUtc = command.ExecutedAtUtc,
+            CreatedAtUtc = now
+        });
+        context.FiatLedgerEntries.AddRange(
+            new FiatLedgerEntryEntity
+            {
+                Id = Guid.CreateVersion7(),
+                TransactionId = transactionId,
+                Sequence = 1,
+                FiatCurrency = command.FiatCurrency.Value,
+                AccountKind = FiatLedgerAccountKinds.CustomerReserved,
+                AccountId = normalizedCustomerAccountId,
+                Direction = FiatLedgerEntryDirection.Decrease,
+                Amount = command.CustomerDebitAmount,
+                CreatedAtUtc = now
+            },
+            new FiatLedgerEntryEntity
+            {
+                Id = Guid.CreateVersion7(),
+                TransactionId = transactionId,
+                Sequence = 2,
+                FiatCurrency = command.FiatCurrency.Value,
+                AccountKind = FiatLedgerAccountKinds.PlatformTradeClearing,
+                AccountId = FiatLedgerAccountIds.Platform,
+                Direction = FiatLedgerEntryDirection.Increase,
+                Amount = command.CustomerDebitAmount,
+                CreatedAtUtc = now
+            });
+
+        try
+        {
+            await context.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+        }
+        catch (DbUpdateException exception) when (UniqueConstraintViolationDetector.IsUniqueConstraintViolation(exception))
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            var duplicate = await GetRecordedBrokeredBuySettlementAsync(
+                normalizedCustomerAccountId,
+                normalizedClientOrderId,
+                cancellationToken);
+            if (duplicate is null)
+            {
+                throw;
+            }
+
+            EnsureMatchingDuplicate(command, duplicate);
+            return duplicate;
+        }
+
+        return new FiatBrokeredBuySettlementReceipt(
+            normalizedClientOrderId,
+            normalizedCustomerAccountId,
+            command.FiatCurrency.Value,
+            command.CustomerDebitAmount,
+            command.ExecutedAtUtc);
+    }
+
+    public async Task<FiatBrokeredBuyReservationReleaseReceipt> ReleaseReservedBrokeredBuyFundsAsync(
+        FiatLedgerBrokeredBuyReservationReleaseCommand command,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(command);
+        cancellationToken.ThrowIfCancellationRequested();
+        Validate(command);
+
+        var normalizedCustomerAccountId = command.CustomerAccountId.Trim();
+        var normalizedClientOrderId = command.ClientOrderId.Trim();
+        var operationId = BuildOperationId(normalizedCustomerAccountId, normalizedClientOrderId);
+
+        await using var context = await dbContextFactory.CreateDbContextAsync(cancellationToken);
+        await using var transaction = await context.Database.BeginTransactionAsync(cancellationToken);
+
+        var existingTransaction = await context.FiatLedgerTransactions
+            .AsNoTracking()
+            .SingleOrDefaultAsync(
+                candidate => candidate.OperationType == FiatLedgerOperationTypes.BrokeredCryptoBuyReservationRelease
+                    && candidate.OperationId == operationId,
+                cancellationToken);
+        if (existingTransaction is not null)
+        {
+            var existingReservedEntry = await context.FiatLedgerEntries
+                .AsNoTracking()
+                .SingleOrDefaultAsync(
+                    candidate => candidate.TransactionId == existingTransaction.Id
+                        && candidate.Sequence == 2
+                        && candidate.AccountKind == FiatLedgerAccountKinds.CustomerAvailable
+                        && candidate.AccountId == normalizedCustomerAccountId
+                        && candidate.Direction == FiatLedgerEntryDirection.Increase,
+                    cancellationToken);
+            if (existingReservedEntry is null)
+            {
+                throw new InvalidOperationException(
+                    $"Fiat release transaction '{existingTransaction.Id}' is missing customer available journal entry.");
+            }
+
+            var existing = new FiatBrokeredBuyReservationReleaseReceipt(
+                normalizedClientOrderId,
+                normalizedCustomerAccountId,
+                existingReservedEntry.FiatCurrency,
+                existingReservedEntry.Amount,
+                existingTransaction.ExecutedAtUtc);
+            EnsureMatchingDuplicate(command, existing);
+            await transaction.RollbackAsync(cancellationToken);
+            return existing;
+        }
+
+        var now = timeProvider.GetUtcNow();
+        await DecreaseBalanceAsync(
+            context,
+            command.FiatCurrency.Value,
+            FiatLedgerAccountKinds.CustomerReserved,
+            normalizedCustomerAccountId,
+            command.ReleasedAmount,
+            now,
+            cancellationToken);
+        await IncreaseBalanceAsync(
+            context,
+            command.FiatCurrency.Value,
+            FiatLedgerAccountKinds.CustomerAvailable,
+            normalizedCustomerAccountId,
+            command.ReleasedAmount,
+            now,
+            cancellationToken);
+
+        var transactionId = Guid.CreateVersion7();
+        context.FiatLedgerTransactions.Add(new FiatLedgerTransactionEntity
+        {
+            Id = transactionId,
+            OperationType = FiatLedgerOperationTypes.BrokeredCryptoBuyReservationRelease,
+            OperationId = operationId,
+            ExecutedAtUtc = command.ReleasedAtUtc,
+            CreatedAtUtc = now
+        });
+        context.FiatLedgerEntries.AddRange(
+            new FiatLedgerEntryEntity
+            {
+                Id = Guid.CreateVersion7(),
+                TransactionId = transactionId,
+                Sequence = 1,
+                FiatCurrency = command.FiatCurrency.Value,
+                AccountKind = FiatLedgerAccountKinds.CustomerReserved,
+                AccountId = normalizedCustomerAccountId,
+                Direction = FiatLedgerEntryDirection.Decrease,
+                Amount = command.ReleasedAmount,
+                CreatedAtUtc = now
+            },
+            new FiatLedgerEntryEntity
+            {
+                Id = Guid.CreateVersion7(),
+                TransactionId = transactionId,
+                Sequence = 2,
+                FiatCurrency = command.FiatCurrency.Value,
+                AccountKind = FiatLedgerAccountKinds.CustomerAvailable,
+                AccountId = normalizedCustomerAccountId,
+                Direction = FiatLedgerEntryDirection.Increase,
+                Amount = command.ReleasedAmount,
+                CreatedAtUtc = now
+            });
+
+        try
+        {
+            await context.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+        }
+        catch (DbUpdateException exception) when (UniqueConstraintViolationDetector.IsUniqueConstraintViolation(exception))
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            var duplicateTransaction = await context.FiatLedgerTransactions
+                .AsNoTracking()
+                .SingleOrDefaultAsync(
+                    candidate => candidate.OperationType == FiatLedgerOperationTypes.BrokeredCryptoBuyReservationRelease
+                        && candidate.OperationId == operationId,
+                    cancellationToken);
+            if (duplicateTransaction is null)
+            {
+                throw;
+            }
+
+            var duplicateEntry = await context.FiatLedgerEntries
+                .AsNoTracking()
+                .SingleOrDefaultAsync(
+                    candidate => candidate.TransactionId == duplicateTransaction.Id
+                        && candidate.Sequence == 2
+                        && candidate.AccountKind == FiatLedgerAccountKinds.CustomerAvailable
+                        && candidate.AccountId == normalizedCustomerAccountId
+                        && candidate.Direction == FiatLedgerEntryDirection.Increase,
+                    cancellationToken);
+            if (duplicateEntry is null)
+            {
+                throw;
+            }
+
+            var duplicate = new FiatBrokeredBuyReservationReleaseReceipt(
+                normalizedClientOrderId,
+                normalizedCustomerAccountId,
+                duplicateEntry.FiatCurrency,
+                duplicateEntry.Amount,
+                duplicateTransaction.ExecutedAtUtc);
+            EnsureMatchingDuplicate(command, duplicate);
+            return duplicate;
+        }
+
+        return new FiatBrokeredBuyReservationReleaseReceipt(
+            normalizedClientOrderId,
+            normalizedCustomerAccountId,
+            command.FiatCurrency.Value,
+            command.ReleasedAmount,
+            command.ReleasedAtUtc);
+    }
+
     public async Task<FiatBrokeredBuySettlementReceipt> RecordBrokeredBuySettlementAsync(
         FiatLedgerBrokeredBuyPostingCommand command,
         CancellationToken cancellationToken = default)
@@ -494,6 +936,84 @@ public sealed class EfCoreFiatLedger(
         }
     }
 
+    private static void Validate(FiatLedgerBrokeredBuyReservationCommand command)
+    {
+        if (string.IsNullOrWhiteSpace(command.CustomerAccountId))
+        {
+            throw new ArgumentException("CustomerAccountId is required.", nameof(command.CustomerAccountId));
+        }
+
+        if (string.IsNullOrWhiteSpace(command.ClientOrderId))
+        {
+            throw new ArgumentException("ClientOrderId is required.", nameof(command.ClientOrderId));
+        }
+
+        if (command.ReservedAmount <= 0m)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(command.ReservedAmount),
+                command.ReservedAmount,
+                "ReservedAmount must be greater than zero.");
+        }
+
+        if (!FiatCurrency.TryParse(command.FiatCurrency.Value, out _))
+        {
+            throw new ArgumentException("FiatCurrency is required and must be supported.", nameof(command.FiatCurrency));
+        }
+    }
+
+    private static void Validate(FiatLedgerBrokeredBuyReservationCaptureCommand command)
+    {
+        if (string.IsNullOrWhiteSpace(command.CustomerAccountId))
+        {
+            throw new ArgumentException("CustomerAccountId is required.", nameof(command.CustomerAccountId));
+        }
+
+        if (string.IsNullOrWhiteSpace(command.ClientOrderId))
+        {
+            throw new ArgumentException("ClientOrderId is required.", nameof(command.ClientOrderId));
+        }
+
+        if (command.CustomerDebitAmount <= 0m)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(command.CustomerDebitAmount),
+                command.CustomerDebitAmount,
+                "CustomerDebitAmount must be greater than zero.");
+        }
+
+        if (!FiatCurrency.TryParse(command.FiatCurrency.Value, out _))
+        {
+            throw new ArgumentException("FiatCurrency is required and must be supported.", nameof(command.FiatCurrency));
+        }
+    }
+
+    private static void Validate(FiatLedgerBrokeredBuyReservationReleaseCommand command)
+    {
+        if (string.IsNullOrWhiteSpace(command.CustomerAccountId))
+        {
+            throw new ArgumentException("CustomerAccountId is required.", nameof(command.CustomerAccountId));
+        }
+
+        if (string.IsNullOrWhiteSpace(command.ClientOrderId))
+        {
+            throw new ArgumentException("ClientOrderId is required.", nameof(command.ClientOrderId));
+        }
+
+        if (command.ReleasedAmount <= 0m)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(command.ReleasedAmount),
+                command.ReleasedAmount,
+                "ReleasedAmount must be greater than zero.");
+        }
+
+        if (!FiatCurrency.TryParse(command.FiatCurrency.Value, out _))
+        {
+            throw new ArgumentException("FiatCurrency is required and must be supported.", nameof(command.FiatCurrency));
+        }
+    }
+
     private static void Validate(FiatLedgerBankSettlementPostingCommand command)
     {
         if (string.IsNullOrWhiteSpace(command.BankReferenceId))
@@ -524,6 +1044,42 @@ public sealed class EfCoreFiatLedger(
         {
             throw new InvalidOperationException(
                 $"Client order id '{command.ClientOrderId}' was already used with a different fiat settlement request.");
+        }
+    }
+
+    private static void EnsureMatchingDuplicate(
+        FiatLedgerBrokeredBuyReservationCommand command,
+        FiatBrokeredBuyReservationReceipt existing)
+    {
+        if (existing.ReservedAmount != command.ReservedAmount ||
+            !string.Equals(existing.FiatCurrency, command.FiatCurrency.Value, StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException(
+                $"Client order id '{command.ClientOrderId}' was already used with a different fiat reservation request.");
+        }
+    }
+
+    private static void EnsureMatchingDuplicate(
+        FiatLedgerBrokeredBuyReservationCaptureCommand command,
+        FiatBrokeredBuySettlementReceipt existing)
+    {
+        if (existing.CustomerDebitAmount != command.CustomerDebitAmount ||
+            !string.Equals(existing.FiatCurrency, command.FiatCurrency.Value, StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException(
+                $"Client order id '{command.ClientOrderId}' was already used with a different fiat reservation capture request.");
+        }
+    }
+
+    private static void EnsureMatchingDuplicate(
+        FiatLedgerBrokeredBuyReservationReleaseCommand command,
+        FiatBrokeredBuyReservationReleaseReceipt existing)
+    {
+        if (existing.ReleasedAmount != command.ReleasedAmount ||
+            !string.Equals(existing.FiatCurrency, command.FiatCurrency.Value, StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException(
+                $"Client order id '{command.ClientOrderId}' was already used with a different fiat reservation release request.");
         }
     }
 

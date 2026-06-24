@@ -1,12 +1,16 @@
+using Exchange.BrokeredBuys.Messaging;
 using Exchange.CryptoTransactions.Application;
 using Exchange.Contracts;
+using MassTransit;
 using Microsoft.AspNetCore.Mvc;
 
 namespace Exchange.Controllers;
 
 [ApiController]
 [Route("api/brokered-crypto-buys")]
-public sealed class BrokeredCryptoBuysController(IBrokeredCryptoBuyService brokeredCryptoBuyService) : ControllerBase
+public sealed class BrokeredCryptoBuysController(
+    IBrokeredCryptoBuyService brokeredCryptoBuyService,
+    IPublishEndpoint publishEndpoint) : ControllerBase
 {
     [HttpPost("quote")]
     public async Task<ActionResult<BrokeredCryptoBuyQuote>> QuoteAsync(
@@ -36,7 +40,7 @@ public sealed class BrokeredCryptoBuysController(IBrokeredCryptoBuyService broke
     }
 
     [HttpPost]
-    public async Task<ActionResult<BrokeredCryptoBuyReceipt>> ExecuteAsync(
+    public async Task<ActionResult<SubmitBrokeredCryptoBuyWorkflowResponse>> ExecuteAsync(
         [FromBody] ExecuteBrokeredCryptoBuyRequest request,
         CancellationToken cancellationToken)
     {
@@ -51,8 +55,10 @@ public sealed class BrokeredCryptoBuysController(IBrokeredCryptoBuyService broke
             });
         }
 
-        var receipt = await brokeredCryptoBuyService.ExecuteAsync(
-            new ExecuteBrokeredCryptoBuyCommand(
+        var correlationId = Guid.CreateVersion7();
+        await publishEndpoint.Publish(
+            new SubmitBrokeredFiatCryptoBuy(
+                correlationId,
                 request.QuoteId,
                 request.ClientOrderId,
                 request.CustomerAccountId,
@@ -60,9 +66,14 @@ public sealed class BrokeredCryptoBuysController(IBrokeredCryptoBuyService broke
                 request.Quantity,
                 request.QuoteCurrency,
                 request.MaxUnitPrice,
-                request.MaxTotalCost),
+                request.MaxTotalCost,
+                DateTimeOffset.UtcNow),
             cancellationToken);
 
-        return Ok(receipt);
+        return Accepted(new SubmitBrokeredCryptoBuyWorkflowResponse(
+            correlationId,
+            request.ClientOrderId,
+            request.CustomerAccountId,
+            "submitted"));
     }
 }
