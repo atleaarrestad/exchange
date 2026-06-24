@@ -83,17 +83,17 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IBlockchainTransferGateway>(serviceProvider =>
             serviceProvider.GetRequiredService<RuntimeResilientBlockchainTransferGateway>());
         services.AddSingleton<CryptoTransferSubmissionProcessor>();
+        if (includeBootstrapWorker)
+        {
+            services.AddHostedService<RuntimeSettingsBootstrapWorker>();
+        }
+
         if (includeBackgroundWorkers)
         {
             services.AddHostedService<CryptoTransferSubmissionWorker>();
             services.AddHostedService<CryptoTransferTimeoutReconciliationWorker>();
             services.AddHostedService<ExternalHedgeBatchExecutionWorker>();
             services.AddHostedService<SettingsChangeOutboxPublisherWorker>();
-        }
-
-        if (includeBootstrapWorker)
-        {
-            services.AddHostedService<RuntimeSettingsBootstrapWorker>();
         }
         return services;
     }

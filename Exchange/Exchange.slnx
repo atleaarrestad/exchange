@@ -1,13 +1,19 @@
 <Solution>
+  <Project Path="../Frontend/broker-admin/broker-admin.esproj">
+    <Build />
+    <Deploy />
+  </Project>
+  <Project Path="../Frontend/broker-web/broker-web.esproj">
+    <Build />
+    <Deploy />
+  </Project>
   <Project Path="Exchange.CryptoTransactions.Application/Exchange.CryptoTransactions.Application.csproj" />
   <Project Path="Exchange.CryptoTransactions.Domain/Exchange.CryptoTransactions.Domain.csproj" />
   <Project Path="Exchange.CryptoTransactions.Infrastructure.Simulation/Exchange.CryptoTransactions.Infrastructure.Simulation.csproj" />
   <Project Path="Exchange.CryptoTransactions.Infrastructure/Exchange.CryptoTransactions.Infrastructure.csproj" />
   <Project Path="Exchange.CryptoTransactions.Resilience/Exchange.CryptoTransactions.Resilience.csproj" />
   <Project Path="Exchange.Infrastructure/Exchange.Infrastructure.csproj" />
-  <Project Path="Exchange/Exchange.Api.csproj" />
   <Project Path="Exchange.Worker/Exchange.Worker.csproj" />
-  <Project Path="../Frontend/broker-admin/broker-admin.esproj" />
-  <Project Path="../Frontend/broker-web/broker-web.esproj" />
+  <Project Path="Exchange/Exchange.Api.csproj" />
   <Project Path="Tests/Tests.csproj" />
 </Solution>

@@ -107,18 +107,27 @@ public sealed class EfCoreExternalHedgeBatchQueue(
         var policy = tradingPolicyProvider.GetCurrent();
 
         await using var context = await dbContextFactory.CreateDbContextAsync(cancellationToken);
-        var candidateGroups = await context.ExternalHedgeBatchEntries
+        var candidateGroupRows = await context.ExternalHedgeBatchEntries
             .AsNoTracking()
             .Where(entry => entry.ExecutedAtUtc == null
                 && (entry.LeaseExpiresAtUtc == null || entry.LeaseExpiresAtUtc < now))
             .GroupBy(entry => new { entry.AssetSymbol, entry.QuoteCurrency })
-            .Select(group => new CandidateBatchGroup(
+            .Select(group => new
+            {
                 group.Key.AssetSymbol,
                 group.Key.QuoteCurrency,
-                group.Count(),
-                group.Min(entry => entry.RequestedAtUtc)))
+                PendingCount = group.Count(),
+                OldestRequestedAtUtc = group.Min(entry => entry.RequestedAtUtc)
+            })
             .OrderBy(group => group.OldestRequestedAtUtc)
             .ToArrayAsync(cancellationToken);
+        var candidateGroups = candidateGroupRows
+            .Select(group => new CandidateBatchGroup(
+                group.AssetSymbol,
+                group.QuoteCurrency,
+                group.PendingCount,
+                group.OldestRequestedAtUtc))
+            .ToArray();
 
         var dueGroup = candidateGroups.FirstOrDefault(group =>
             group.PendingCount >= policy.MaxBufferedHedgeCustomerBuys
