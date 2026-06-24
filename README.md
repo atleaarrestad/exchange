@@ -44,3 +44,4 @@ Outbound blockchain submission is executed by worker consumers via RabbitMQ disp
 Kraken can be enabled as a real blockchain transfer gateway via `CryptoTransactions:Gateways:Kraken` configuration. When enabled, the infrastructure layer uses Kraken private API signing and withdrawal/status endpoints for BTC/ETH while keeping the same application contracts.
 
 Brokered buy execution now uses a persistent ownership ledger core in the crypto infrastructure database. Customer ownership positions, platform inventory positions, executed buys, and immutable journal entries are stored for replay-safe idempotency and auditability while external hedging remains asynchronously batched.
+Executed external hedge batches are now persisted as immutable execution records and settled asynchronously into the ledger by moving quantity from `platform_external_hedge_pending` to `platform_inventory`, with reconciliation retries for unsettled executions.

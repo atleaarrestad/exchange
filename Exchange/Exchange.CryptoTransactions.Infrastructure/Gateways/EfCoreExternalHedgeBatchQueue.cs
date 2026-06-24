@@ -9,6 +9,7 @@ namespace Exchange.CryptoTransactions.Infrastructure.Gateways;
 public sealed class EfCoreExternalHedgeBatchQueue(
     IDbContextFactory<CryptoTransactionsDbContext> dbContextFactory,
     IExternalLiquidityHedgingGateway externalLiquidityHedgingGateway,
+    IExternalHedgeSettlementService externalHedgeSettlementService,
     IBrokeredTradingPolicyProvider tradingPolicyProvider,
     TimeProvider timeProvider) : IExternalHedgeBatchQueue
 {
@@ -92,7 +93,22 @@ public sealed class EfCoreExternalHedgeBatchQueue(
                     throw;
                 }
 
-                await MarkBatchExecutedAsync(claimedBatch.LeaseToken, result.ExternalOrderId, cancellationToken);
+                await externalHedgeSettlementService.RegisterExecutionAsync(
+                    new ExternalHedgeExecutionObservation(
+                        result.ExternalOrderId,
+                        claimedBatch.AssetSymbol,
+                        claimedBatch.QuoteCurrency,
+                        result.ExecutedQuantity,
+                        result.ExecutedUnitPrice,
+                        result.ExecutedAtUtc),
+                    cancellationToken);
+                await MarkBatchExecutedAsync(claimedBatch.LeaseToken, result, cancellationToken);
+                await externalHedgeSettlementService.SettleAsync(result.ExternalOrderId, cancellationToken);
+                if (result.ExecutedQuantity != claimedBatch.Quantity)
+                {
+                    throw new ExternalHedgeExecutionQuantityMismatchException(
+                        $"External hedge execution '{result.ExternalOrderId}' settled quantity {result.ExecutedQuantity} for a claimed batch quantity of {claimedBatch.Quantity}. Manual investigation is required.");
+                }
             }
         }
         finally
@@ -175,15 +191,15 @@ public sealed class EfCoreExternalHedgeBatchQueue(
             leaseToken);
     }
 
-    private async Task MarkBatchExecutedAsync(Guid leaseToken, string externalOrderId, CancellationToken cancellationToken)
+    private async Task MarkBatchExecutedAsync(Guid leaseToken, HedgePurchaseResult result, CancellationToken cancellationToken)
     {
         await using var context = await dbContextFactory.CreateDbContextAsync(cancellationToken);
         await context.ExternalHedgeBatchEntries
             .Where(entry => entry.LeaseToken == leaseToken && entry.ExecutedAtUtc == null)
             .ExecuteUpdateAsync(
                 setters => setters
-                    .SetProperty(entry => entry.ExecutedAtUtc, DateTimeOffset.UtcNow)
-                    .SetProperty(entry => entry.ExecutedExternalOrderId, externalOrderId)
+                    .SetProperty(entry => entry.ExecutedAtUtc, result.ExecutedAtUtc)
+                    .SetProperty(entry => entry.ExecutedExternalOrderId, result.ExternalOrderId)
                     .SetProperty(entry => entry.LeaseOwnerId, (string?)null)
                     .SetProperty(entry => entry.LeaseExpiresAtUtc, (DateTimeOffset?)null)
                     .SetProperty(entry => entry.LeaseToken, (Guid?)null),

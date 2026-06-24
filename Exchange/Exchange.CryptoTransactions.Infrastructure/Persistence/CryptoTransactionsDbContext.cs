@@ -18,6 +18,7 @@ public sealed class CryptoTransactionsDbContext(DbContextOptions<CryptoTransacti
     public DbSet<CryptoOwnershipPositionEntity> CryptoOwnershipPositions => Set<CryptoOwnershipPositionEntity>();
     public DbSet<PlatformInventoryPositionEntity> PlatformInventoryPositions => Set<PlatformInventoryPositionEntity>();
     public DbSet<BrokeredCryptoBuyExecutionEntity> BrokeredCryptoBuyExecutions => Set<BrokeredCryptoBuyExecutionEntity>();
+    public DbSet<ExternalHedgeExecutionRecordEntity> ExternalHedgeExecutionRecords => Set<ExternalHedgeExecutionRecordEntity>();
     public DbSet<CryptoLedgerTransactionEntity> CryptoLedgerTransactions => Set<CryptoLedgerTransactionEntity>();
     public DbSet<CryptoLedgerEntryEntity> CryptoLedgerEntries => Set<CryptoLedgerEntryEntity>();
 
@@ -273,6 +274,26 @@ public sealed class CryptoTransactionsDbContext(DbContextOptions<CryptoTransacti
         brokeredBuyExecutions.HasIndex(entity => new { entity.CustomerAccountId, entity.AssetSymbol, entity.ClientOrderId })
             .IsUnique()
             .HasDatabaseName("ux_brokered_crypto_buy_executions_customer_asset_order");
+
+        var externalHedgeExecutionRecords = modelBuilder.Entity<ExternalHedgeExecutionRecordEntity>();
+        externalHedgeExecutionRecords.ToTable("external_hedge_execution_records");
+        externalHedgeExecutionRecords.HasKey(entity => entity.Id);
+        externalHedgeExecutionRecords.Property(entity => entity.Id).HasColumnName("id");
+        externalHedgeExecutionRecords.Property(entity => entity.ExternalOrderId).HasColumnName("external_order_id").HasMaxLength(128);
+        externalHedgeExecutionRecords.Property(entity => entity.AssetSymbol).HasColumnName("asset_symbol").HasMaxLength(16);
+        externalHedgeExecutionRecords.Property(entity => entity.QuoteCurrency).HasColumnName("quote_currency").HasMaxLength(16);
+        externalHedgeExecutionRecords.Property(entity => entity.ExecutedQuantity).HasColumnName("executed_quantity");
+        externalHedgeExecutionRecords.Property(entity => entity.ExecutedUnitPrice).HasColumnName("executed_unit_price");
+        externalHedgeExecutionRecords.Property(entity => entity.ExecutedAtUtc).HasColumnName("executed_at_utc");
+        externalHedgeExecutionRecords.Property(entity => entity.SettledAtUtc).HasColumnName("settled_at_utc");
+        externalHedgeExecutionRecords.Property(entity => entity.SettlementLedgerTransactionId).HasColumnName("settlement_ledger_transaction_id");
+        externalHedgeExecutionRecords.Property(entity => entity.CreatedAtUtc).HasColumnName("created_at_utc");
+        externalHedgeExecutionRecords.Property(entity => entity.UpdatedAtUtc).HasColumnName("updated_at_utc");
+        externalHedgeExecutionRecords.HasIndex(entity => entity.ExternalOrderId)
+            .IsUnique()
+            .HasDatabaseName("ux_external_hedge_execution_records_external_order");
+        externalHedgeExecutionRecords.HasIndex(entity => new { entity.SettledAtUtc, entity.ExecutedAtUtc })
+            .HasDatabaseName("ix_external_hedge_execution_records_settlement_state");
 
         var ledgerTransactions = modelBuilder.Entity<CryptoLedgerTransactionEntity>();
         ledgerTransactions.ToTable("crypto_ledger_transactions");

@@ -83,6 +83,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton(TimeProvider.System);
         services.AddSingleton<IBackgroundWorkerHeartbeatStore, EfCoreBackgroundWorkerHeartbeatStore>();
         services.AddSingleton<IExternalHedgeBatchQueue, EfCoreExternalHedgeBatchQueue>();
+        services.AddSingleton<IExternalHedgeSettlementService, EfCoreExternalHedgeSettlementService>();
         services.AddSingleton<IInternalReferencePriceFeed, StaticReferencePriceFeed>();
         services.AddSingleton<ILiveMarketPriceFeed, UnconfiguredLiveMarketPriceFeed>();
         services.AddSingleton<IExternalLiquidityHedgingGateway, UnconfiguredExternalLiquidityHedgingGateway>();
@@ -102,6 +103,7 @@ public static class ServiceCollectionExtensions
             services.AddHostedService<CryptoTransferSubmissionWorker>();
             services.AddHostedService<CryptoTransferTimeoutReconciliationWorker>();
             services.AddHostedService<ExternalHedgeBatchExecutionWorker>();
+            services.AddHostedService<ExternalHedgeSettlementReconciliationWorker>();
             services.AddHostedService<SettingsChangeOutboxPublisherWorker>();
             services.AddHostedService<CronJobRunnerWorker>();
         }
